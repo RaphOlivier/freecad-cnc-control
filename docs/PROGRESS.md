@@ -18,3 +18,8 @@ E1: inspect installed FreeCAD API (read-only, freecadcmd); record findings in do
 
 ## Next
 E2: GRBL 1.1 protocol parsing in core/ (ok, errors, alarms, status reports), from the GRBL 1.1 documentation.
+- 2026-11-11: E2 done: GRBL 1.1 protocol parser in core/grbl_protocol.py (18 tests, ruff clean), merged with green CI.
+- 2026-11-11: dev container added (.devcontainer/) so the project can be developed in GitHub Codespaces from a browser, with no local machine. Matches CI (Python 3.12, pytest, ruff); build-essential and socat included for the future compiled-GRBL integration tests (E3). Optional script .devcontainer/install-freecad-appimage.sh for read-only FreeCAD inspection (snap is not available inside containers; AppImage fallback per docs/FRAMING.md).
+
+## Next
+E3-E8: core communication testable without FreeCAD (see docs/LAUNCH_PROMPT.md); checkpoints after E6 and E8.
