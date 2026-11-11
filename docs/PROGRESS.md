@@ -1,4 +1,4 @@
-
+STATUS: RUNNING
 STATUS: NOT_STARTED
 
 # Progress log
@@ -9,3 +9,8 @@ STATUS: NOT_STARTED
 
 ## Next
 E0 in docs/LAUNCH_PROMPT.md (repository skeleton, CI on 3 systems).
+- 2026-11-11: handoff package merged into main (commit 6bf35dd, by the owner).
+- 2026-11-11: E0 done: repository skeleton, CI on 3 systems (core+worker+style), LGPL-2.1-or-later LICENSE, provisional package.xml, placeholder test.
+
+## Next
+E1: inspect installed FreeCAD API (read-only, freecadcmd); record findings in docs/DECISIONS.md.

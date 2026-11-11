@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Provisional metadata for the FreeCAD Addon Manager.
+     The namespace layout and content entries still need verification
+     against the Addon Manager documentation (see docs/OPEN_QUESTIONS.md). -->
+<package format="1" xmlns="https://wiki.freecad.org/PackageXML">
+  <name>CNC Control</name>
+  <description>FreeCAD workbench to drive CNC machines from FreeCAD, starting with GRBL 1.1 over serial. Early development: not yet functional.</description>
+  <version>0.0.1</version>
+  <date>2026-11-11</date>
+  <maintainer email="rapholivier@users.noreply.github.com">Raphaël Olivier</maintainer>
+  <license file="LICENSE">LGPL-2.1-or-later</license>
+  <url type="repository" branch="main">https://github.com/RaphOlivier/freecad-cnc-control</url>
+  <url type="bugtracker">https://github.com/RaphOlivier/freecad-cnc-control/issues</url>
+  <content>
+    <workbench>
+      <name>CNC Control</name>
+      <description>Drive CNC machines (GRBL 1.1) from FreeCAD.</description>
+      <subdirectory>freecad/cnc_control</subdirectory>
+    </workbench>
+  </content>
+</package>
