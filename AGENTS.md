@@ -104,8 +104,8 @@ Continuous integration runs on GitHub Actions on the three systems for core/work
 4. Decide alone: internal design choices, naming, structure, test design, documented assumptions.
 5. Ask the owner first for: a new dependency, a license decision, a major architecture change, anything touching machine safety, publication, destructive git operations, third-party code reuse.
 6. Stop after 3 failed attempts on the same step, or at usage limit. Write the state in `docs/PROGRESS.md` so another agent can resume without asking anything essential.
-7. Git: work on a dedicated branch (for example `agent/milestone-1`), one commit per small tested step, push only that branch, never force-push, never touch `main`. The owner merges.
-8. Commands to refuse or to submit to the owner before running: `git push` to `main`, `--force`, `rm -rf`, `sudo`, `curl | sh`, any access to `/dev/tty*`, `/dev/cu.*` or `COM*` ports, installation of packages not yet approved.
+7. Git: work on a dedicated branch (for example `agent/milestone-1`) or push directly to `main`; one commit per small tested step, never force-push. (Direct pushes to `main` are allowed since 2026-11-11, by owner decision; the earlier "the owner merges" rule was removed.)
+8. Commands to refuse or to submit to the owner before running: `--force` and other destructive git operations, `rm -rf`, `sudo`, `curl | sh`, any access to `/dev/tty*`, `/dev/cu.*` or `COM*` ports, installation of packages not yet approved.
 9. At the end of milestone 1: write `REPORT.md` (done, tested, open points, manual procedures to run, risks) and a short summary in chat. Then continue on the next milestone (RS-232 parameter discovery) under the same safety rules (virtual ports only; real-device trials remain manual procedures run by the owner), unless the owner or the orchestrator says otherwise.
 
 ## 9. Roadmap after milestone 1 (order set by the owner, details left to the agent)
@@ -123,4 +123,3 @@ STATUS: RUNNING
 STATUS: BLOCKED       (3 failed attempts, or the owner's approval is needed)
 STATUS: NEEDS_OWNER   (a manual procedure must be run by the owner)
 STATUS: DONE
-

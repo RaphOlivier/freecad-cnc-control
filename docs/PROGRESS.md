@@ -23,3 +23,4 @@ E2: GRBL 1.1 protocol parsing in core/ (ok, errors, alarms, status reports), fro
 
 ## Next
 E3-E8: core communication testable without FreeCAD (see docs/LAUNCH_PROMPT.md); checkpoints after E6 and E8.
+- 2026-11-11: git policy change (owner decision): direct pushes to `main` are allowed; the "the owner merges" rule was removed from AGENTS.md (sections 8.7 and 8.8). Force-push remains forbidden.
