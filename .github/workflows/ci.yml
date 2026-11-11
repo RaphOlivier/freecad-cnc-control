@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest ruff
+      - name: Core and worker tests (no FreeCAD, no Qt)
+        run: pytest tests/core tests/worker
+      - name: Style check
+        run: ruff check freecad tests
+      # GUI tests (tests/gui, headless Qt) will be added at step E9,
+      # once the PySide version alignment is settled. Integration tests
+      # (compiled GRBL simulator) will be added at step E3, Linux only.
