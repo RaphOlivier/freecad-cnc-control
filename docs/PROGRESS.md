@@ -14,3 +14,7 @@ E0 in docs/LAUNCH_PROMPT.md (repository skeleton, CI on 3 systems).
 
 ## Next
 E1: inspect installed FreeCAD API (read-only, freecadcmd); record findings in docs/DECISIONS.md.
+- 2026-11-11: E1 done: installed FreeCAD 1.1.4 (snap) inspected read-only; post-processor discovery mechanism, official GRBL post license, _TempObject precedent and workbench layout recorded in docs/DECISIONS.md (E1-01..E1-06).
+
+## Next
+E2: GRBL 1.1 protocol parsing in core/ (ok, errors, alarms, status reports), from the GRBL 1.1 documentation.
