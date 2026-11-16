@@ -28,3 +28,7 @@ E3-E8: core communication testable without FreeCAD (see docs/LAUNCH_PROMPT.md); 
 
 ## Next
 E4: character-counting streamer with prioritized real-time commands.
+- 2026-11-11: E4 done: CharacterCountingStreamer (core/streamer.py) with character counting, push/ack separation, error stop+drain, alarm abort, unsendable-line detection; 10 tests against the fake GRBL (see docs/FAILURES.md).
+
+## Next
+E5: connection manager (connect/disconnect, welcome handshake, status polling) on top of transports + streamer.
