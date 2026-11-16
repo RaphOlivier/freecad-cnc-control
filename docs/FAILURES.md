@@ -15,3 +15,10 @@ Rule 3 of the working rules: three failed attempts on the same point = stop and 
 - Root cause: the pty slave line discipline is in canonical mode by default; bytes without a newline (real-time commands like '?') are never delivered to the reader, so the fake GRBL never sees the status query.
 - Fix: clear ICANON (and ECHO) on the slave at open().
 - Lesson: a pty is not a dumb pipe; its line discipline must be configured to emulate a serial link.
+
+## 2026-11-11 - E4: 2 test failures + 1 hang on first run
+
+- Push messages (banner, [MSG:...]) were releasing a pending line; only ok/error acknowledge (Interface wiki). Fixed: ack only on Ok/Error.
+- Test bug: called read(timeout=...) which does not exist; fixed the test.
+- Hang: a line that can never fit the RX buffer blocked run() forever on read_line; fixed: stop the stream, never send that line.
+- Lesson: distinguish ack-carrying responses from push messages before writing the accounting; a streamer must detect unsendable lines instead of waiting.
