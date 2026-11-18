@@ -32,3 +32,7 @@ E4: character-counting streamer with prioritized real-time commands.
 
 ## Next
 E5: connection manager (connect/disconnect, welcome handshake, status polling) on top of transports + streamer.
+- 2026-11-11: E5 done: GrblConnection (handshake, send_line, poll_status, streaming, close); 9 tests.
+
+## Next
+E6: worker process owning the transport (thread), JSON command/event protocol toward the GUI, pyserial serial transport (real hardware path, still behind the fake for tests).
