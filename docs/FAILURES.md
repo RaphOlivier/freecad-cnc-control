@@ -22,3 +22,10 @@ Rule 3 of the working rules: three failed attempts on the same point = stop and 
 - Test bug: called read(timeout=...) which does not exist; fixed the test.
 - Hang: a line that can never fit the RX buffer blocked run() forever on read_line; fixed: stop the stream, never send that line.
 - Lesson: distinguish ack-carrying responses from push messages before writing the accounting; a streamer must detect unsendable lines instead of waiting.
+
+## 2026-11-18 - E6: connect event never fired in 2 tests
+
+- Symptom: test_connect_and_version and test_disconnect_and_shutdown_events timed out waiting for "connected".
+- Root cause: the fake GRBL was started after waiting for the handshake to complete; the worker blocked reading a banner nobody sends yet.
+- Fix: start the fake inside the transport factory, before connect() runs.
+- Lesson: in handshake tests, start the peer side before waiting for handshake events.
