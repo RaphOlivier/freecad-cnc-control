@@ -36,3 +36,7 @@ E5: connection manager (connect/disconnect, welcome handshake, status polling) o
 
 ## Next
 E6: worker process owning the transport (thread), JSON command/event protocol toward the GUI, pyserial serial transport (real hardware path, still behind the fake for tests).
+- 2026-11-18: E6 done: Worker thread + JSON command/event protocol (connect, send, status, stream, disconnect, shutdown); 10 tests, 55 total.
+
+## Next
+E7: real serial transport (pyserial behind the fake), stream cancellation; then passation review point.
