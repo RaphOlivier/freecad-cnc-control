@@ -29,3 +29,10 @@ Rule 3 of the working rules: three failed attempts on the same point = stop and 
 - Root cause: the fake GRBL was started after waiting for the handshake to complete; the worker blocked reading a banner nobody sends yet.
 - Fix: start the fake inside the transport factory, before connect() runs.
 - Lesson: in handshake tests, start the peer side before waiting for handshake events.
+
+## 2026-11-19 - E7: partial worker patch + wrong silent-link test
+
+- Symptom: NameError (params undefined in _handle_status), TransportError instead of TimeoutError in silent-link tests, worker frozen in send/status tests.
+- Root cause: incremental patches partially matched (signature had _params); silent-link tests closed the shared pair, which closes BOTH ends (MemoryTransport.pair shares its closed flag, so TimeoutError can never occur on a closed transport).
+- Fix: full rewrite of worker.py (E6+E7 combined); silent-link tests now keep the peer alive and simply never serve it.
+- Lesson: when a file needs several interacting changes, rewrite the whole file; never "fake silence" by closing a shared-state pair.

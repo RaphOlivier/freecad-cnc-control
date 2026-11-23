@@ -2,7 +2,7 @@
 
 The passation rules impose that the GUI never owns the transport: every
 machine interaction goes through this worker. Commands in, events out, one
-command at a time (streaming commands run to completion).
+command at a time (streaming runs to completion or until out-of-band cancel).
 
 Command examples: {"cmd": "connect", "params": {"kind": "socket", "host": ...}}
 Event examples: {"event": "connected", "version": "1.1h"}
@@ -14,10 +14,13 @@ import threading
 
 from freecad.cnc_control.core.connection import GrblConnection
 from freecad.cnc_control.core.grbl_protocol import Alarm, Error, Ok
-from freecad.cnc_control.core.transport import SocketTransport
+from freecad.cnc_control.core.transport import SerialTransport, SocketTransport
 
 DEFAULT_TRANSPORT_FACTORIES = {
     "socket": lambda params: SocketTransport(params["host"], int(params["port"])),
+    "serial": lambda params: SerialTransport(
+        params["port"], int(params.get("baudrate", 115200))
+    ),
 }
 
 
@@ -50,11 +53,16 @@ class Worker:
         self._emit = emit or (lambda event: None)
         self._commands: queue.Queue = queue.Queue()
         self._stop = threading.Event()
+        self._cancel_event = threading.Event()
         self._connection: GrblConnection | None = None
 
     def submit(self, command: dict) -> None:
         """Queue one command dict; processed by run()."""
         self._commands.put(command)
+
+    def cancel(self) -> None:
+        """Out-of-band stream cancellation (like real-time bytes, not queued)."""
+        self._cancel_event.set()
 
     def stop(self) -> None:
         self._stop.set()
@@ -66,7 +74,12 @@ class Worker:
                 command = self._commands.get(timeout=0.05)
             except queue.Empty:
                 continue
-            if not self._dispatch(command):
+            try:
+                keep_running = self._dispatch(command)
+            except Exception as exc:  # noqa: BLE001 - surfaced as an error event
+                self._emit({"event": "error", "code": "internal_error", "message": str(exc)})
+                keep_running = True
+            if not keep_running:
                 break
         self._emit({"event": "state", "value": "stopped"})
 
@@ -81,25 +94,27 @@ class Worker:
         }
         handler = handlers.get(command.get("cmd"))
         if handler is None:
-            self._emit(
-                {"event": "error", "code": "unknown_command", "command": command.get("cmd")}
-            )
+            self.emit_error("unknown_command", command=str(command.get("cmd")))
             return True
         return handler(command.get("params") or {})
+
+    def emit_error(self, code: str, **extra) -> None:
+        self._emit({"event": "error", "code": code, **extra})
 
     def _handle_connect(self, params: dict) -> bool:
         factory = self._factories.get(params.get("kind"))
         if factory is None:
-            self._emit(
-                {"event": "error", "code": "unknown_transport", "transport": params.get("kind")}
-            )
+            self.emit_error("unknown_transport", transport=params.get("kind"))
             return True
         try:
             connection = GrblConnection(factory(params))
-            version = connection.connect()
+            timeout = params.get("timeout")
+            version = (
+                connection.connect(timeout=timeout) if timeout else connection.connect()
+            )
         except Exception as exc:  # noqa: BLE001 - surfaced as an error event
             self._connection = None
-            self._emit({"event": "error", "code": "connect_failed", "message": str(exc)})
+            self.emit_error("connect_failed", message=str(exc))
             return True
         self._connection = connection
         self._emit({"event": "connected", "version": version})
@@ -107,7 +122,7 @@ class Worker:
 
     def _handle_disconnect(self, _params: dict) -> bool:
         if self._connection is None:
-            self._emit({"event": "error", "code": "not_connected"})
+            self.emit_error("not_connected")
             return True
         self._connection.close()
         self._connection = None
@@ -116,21 +131,29 @@ class Worker:
 
     def _handle_send(self, params: dict) -> bool:
         if self._connection is None:
-            self._emit({"event": "error", "code": "not_connected"})
+            self.emit_error("not_connected")
             return True
         line = params.get("line")
         if not isinstance(line, str):
-            self._emit({"event": "error", "code": "invalid_command", "command": "send"})
+            self.emit_error("invalid_command", command="send")
             return True
-        payload = _response_payload(self._connection.send_line(line))
-        self._emit({"event": "response", **payload})
+        try:
+            parsed = self._connection.send_line(line, timeout=params.get("timeout") or 10.0)
+        except TimeoutError:
+            self.emit_error("response_timeout", command="send")
+            return True
+        self._emit({"event": "response", **_response_payload(parsed)})
         return True
 
-    def _handle_status(self, _params: dict) -> bool:
+    def _handle_status(self, params: dict) -> bool:
         if self._connection is None:
-            self._emit({"event": "error", "code": "not_connected"})
+            self.emit_error("not_connected")
             return True
-        status = self._connection.poll_status()
+        try:
+            status = self._connection.poll_status(timeout=params.get("timeout") or 2.0)
+        except TimeoutError:
+            self.emit_error("response_timeout", command="status")
+            return True
         self._emit(
             {
                 "event": "status",
@@ -142,19 +165,21 @@ class Worker:
 
     def _handle_stream(self, params: dict) -> bool:
         if self._connection is None:
-            self._emit({"event": "error", "code": "not_connected"})
+            self.emit_error("not_connected")
             return True
         lines = params.get("lines")
         if not isinstance(lines, list):
-            self._emit({"event": "error", "code": "invalid_command", "command": "stream"})
+            self.emit_error("invalid_command", command="stream")
             return True
-        result = self._connection.stream(lines)
+        self._cancel_event.clear()
+        result = self._connection.stream(lines, stop_event=self._cancel_event)
         self._emit(
             {
                 "event": "stream_done",
                 "sent": result.sent,
                 "acked": result.acked,
                 "completed": result.completed,
+                "cancelled": result.cancelled,
                 "errors": [_response_payload(e) for e in result.errors],
                 "alarms": [_response_payload(a) for a in result.alarms],
             }

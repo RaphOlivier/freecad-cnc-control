@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from freecad.cnc_control.core.transport import PtyTransport, SocketTransport
+from freecad.cnc_control.core.transport import PtyTransport, SerialTransport, SocketTransport
 from freecad.cnc_control.testing.fake_grbl import FakeGrbl
 
 
@@ -69,4 +69,16 @@ def test_pty_conversation():
         assert transport.read_line().startswith("<Run|MPos:2.000,0.000,0.000")
     finally:
         stop.set()
+        transport.close()
+
+
+def test_serial_loopback():
+    """loop:// echoes what we write: exercises SerialTransport without hardware."""
+    pytest.importorskip("serial")
+    transport = SerialTransport("loop://")
+    transport.open()
+    try:
+        transport.write_line("hello")
+        assert transport.read_line() == "hello"
+    finally:
         transport.close()

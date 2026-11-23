@@ -40,3 +40,7 @@ E6: worker process owning the transport (thread), JSON command/event protocol to
 
 ## Next
 E7: real serial transport (pyserial behind the fake), stream cancellation; then passation review point.
+- 2026-11-19: E7 done: read timeouts (connect/send/status), out-of-band stream cancellation, SerialTransport (pyserial, loop:// testable); worker rewritten whole after partial-patch incident (see docs/FAILURES.md).
+
+## Next
+E8: end of the communication core; then passation checkpoint #2 before the FreeCAD part (E9+).

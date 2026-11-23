@@ -30,6 +30,7 @@ class StreamResult:
     errors: list[Error] = field(default_factory=list)
     alarms: list[Alarm] = field(default_factory=list)
     completed: bool = False
+    cancelled: bool = False
 
 
 class CharacterCountingStreamer:
@@ -69,6 +70,7 @@ class CharacterCountingStreamer:
         queue = deque(lines)
         while queue or self._pending:
             if stop_event is not None and stop_event.is_set():
+                result.cancelled = True
                 return result
             if not result.errors and not result.alarms:
                 while queue and self._can_send(queue[0]):
@@ -76,7 +78,10 @@ class CharacterCountingStreamer:
                     result.sent += 1
             if queue and not self._pending and not self._can_send(queue[0]):
                 return result  # head line can never fit: never send it
-            response = self._transport.read_line()
+            try:
+                response = self._transport.read_line(timeout=0.2)
+            except TimeoutError:
+                continue  # loop head re-checks stop_event
             if response is None:
                 return result  # transport closed under our feet
             parsed = parse_line(response)

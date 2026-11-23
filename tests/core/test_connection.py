@@ -128,3 +128,25 @@ def test_connect_on_closed_transport_raises():
     except ConnectionError:
         raised = True
     assert raised
+
+
+def test_send_line_timeout_on_silent_link():
+    _controller, client = MemoryTransport.pair()  # no server: never answers
+    connection = GrblConnection(client)
+    try:
+        connection.send_line("G0 X1", timeout=0.2)
+        raised = False
+    except TimeoutError:
+        raised = True
+    assert raised
+
+
+def test_poll_status_timeout_on_silent_link():
+    _controller, client = MemoryTransport.pair()
+    connection = GrblConnection(client)
+    try:
+        connection.poll_status(timeout=0.2)
+        raised = False
+    except TimeoutError:
+        raised = True
+    assert raised

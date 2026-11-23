@@ -196,3 +196,37 @@ def test_disconnect_and_shutdown_events():
         session.shutdown()
         assert session.wait_event("bye") is not None
         assert not session.thread.is_alive()
+
+
+def test_cancel_stopped_stream():
+    backend = Backend()
+    session = Session({"memory": backend.factory})
+    try:
+        session.submit({"cmd": "connect", "params": {"kind": "memory"}})
+        assert session.wait_event("connected") is not None
+        backend.stop.set()  # silent link from here on: stream will stall
+        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
+        time.sleep(0.5)
+        session.worker.cancel()
+        event = session.wait_event("stream_done")
+        assert event is not None
+        assert event["cancelled"] is True
+    finally:
+        backend.cleanup()
+        session.shutdown()
+
+
+def test_send_timeout_event():
+    backend = Backend()
+    session = Session({"memory": backend.factory})
+    try:
+        session.submit({"cmd": "connect", "params": {"kind": "memory"}})
+        assert session.wait_event("connected") is not None
+        backend.stop.set()
+        session.submit({"cmd": "send", "params": {"line": "G0 X1", "timeout": 0.3}})
+        event = session.wait_event("error")
+        assert event is not None
+        assert event["code"] == "response_timeout"
+    finally:
+        backend.cleanup()
+        session.shutdown()

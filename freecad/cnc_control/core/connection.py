@@ -28,10 +28,10 @@ class GrblConnection:
         """GRBL version reported by the welcome banner, once connected."""
         return self._version
 
-    def connect(self) -> str:
+    def connect(self, timeout: float = 10.0) -> str:
         """Read the welcome banner; returns the version string."""
         while True:
-            line = self._transport.read_line()
+            line = self._transport.read_line(timeout=timeout)
             if line is None:
                 raise ConnectionError("transport closed before the welcome message")
             parsed = parse_line(line)
@@ -43,11 +43,11 @@ class GrblConnection:
     def close(self) -> None:
         self._transport.close()
 
-    def send_line(self, line: str) -> Ok | Error | Alarm:
+    def send_line(self, line: str, timeout: float = 10.0) -> Ok | Error | Alarm:
         """Send one line and wait for its own ok/error/ALARM response."""
         self._transport.write_line(line)
         while True:
-            response = self._transport.read_line()
+            response = self._transport.read_line(timeout=timeout)
             if response is None:
                 raise ConnectionError("transport closed while waiting for a response")
             parsed = parse_line(response)
@@ -55,11 +55,11 @@ class GrblConnection:
                 return parsed
             # Push messages are not responses to this line.
 
-    def poll_status(self) -> StatusReport:
+    def poll_status(self, timeout: float = 2.0) -> StatusReport:
         """Send the real-time status query and parse the report."""
         self._transport.write(CMD_STATUS_QUERY)
         while True:
-            line = self._transport.read_line()
+            line = self._transport.read_line(timeout=timeout)
             if line is None:
                 raise ConnectionError("transport closed while waiting for status")
             parsed = parse_line(line)
