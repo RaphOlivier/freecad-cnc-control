@@ -26,7 +26,7 @@ class Transport(ABC):
 
     @abstractmethod
     def read(self) -> bytes | None:
-        """Block until bytes are available; None once closed and drained."""
+        """Return bytes now: data, b"" when idle, None once closed and drained."""
 
     def close(self) -> None:
         self._closed.set()
@@ -94,12 +94,11 @@ class MemoryTransport(Transport):
         self._outgoing.put(data)
 
     def read(self) -> bytes | None:
-        while True:
-            try:
-                return self._incoming.get(timeout=0.05)
-            except queue.Empty:
-                if self._shared_closed.is_set():
-                    return None
+        """One bounded attempt; b"" when idle, None once closed and drained."""
+        try:
+            return self._incoming.get(timeout=0.05)
+        except queue.Empty:
+            return None if self._shared_closed.is_set() else b""
 
     def close(self) -> None:
         self._shared_closed.set()
@@ -137,7 +136,7 @@ class SocketTransport(Transport):
             try:
                 data = self._sock.recv(4096)
             except TimeoutError:
-                continue
+                return b""
             except OSError:
                 return None
             if not data:
@@ -203,6 +202,7 @@ class PtyTransport(Transport):
                     return os.read(self._master_fd, 4096)
                 except OSError:
                     return None
+            return b""
         return None
 
     def close(self) -> None:
@@ -243,13 +243,12 @@ class SerialTransport(Transport):
             raise TransportError(str(exc)) from exc
 
     def read(self) -> bytes | None:
-        while not self._closed.is_set():
-            if self._serial is None:
-                return None
-            data = self._serial.read(4096)
-            if data:
-                return data
-        return None
+        if self._serial is None:
+            return None
+        data = self._serial.read(4096)
+        if data:
+            return data
+        return None if self._closed.is_set() else b""
 
     def close(self) -> None:
         super().close()
