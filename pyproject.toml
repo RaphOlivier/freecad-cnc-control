@@ -7,3 +7,11 @@ timeout = 120
 markers = [
     "integration: integration tests against a compiled GRBL simulator (Linux only)",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-timeout>=2.3",
+    "ruff>=0.8",
+    "pyserial>=3.5",
+]
