@@ -6,6 +6,13 @@ command at a time (streaming runs to completion or until out-of-band cancel).
 
 Command examples: {"cmd": "connect", "params": {"kind": "socket", "host": ...}}
 Event examples: {"event": "connected", "version": "1.1h"}
+
+Connection state machine (E8.2): the worker tracks an explicit state,
+exposed through "connection_state" events:
+
+    disconnected --connect ok--> connected --stream--> streaming --> connected
+    connected  --disconnect--> disconnected
+    streaming  --cancel/failure/done--> connected
 """
 
 import json
@@ -22,6 +29,13 @@ DEFAULT_TRANSPORT_FACTORIES = {
         params["port"], int(params.get("baudrate", 115200))
     ),
 }
+
+DISCONNECTED = "disconnected"
+CONNECTED = "connected"
+STREAMING = "streaming"
+
+# Commands rejected outright while a stream is in flight.
+_BUSY_REJECT = ("send", "stream", "disconnect")
 
 
 def encode_json_line(payload: dict) -> bytes:
@@ -55,9 +69,38 @@ class Worker:
         self._stop = threading.Event()
         self._cancel_event = threading.Event()
         self._connection: GrblConnection | None = None
+        self._state = DISCONNECTED
+        self._state_lock = threading.Lock()
+
+    # --- connection state -------------------------------------------------
+
+    @property
+    def state(self) -> str:
+        """Current connection state (readable from the GUI thread)."""
+        with self._state_lock:
+            return self._state
+
+    def _set_state(self, value: str) -> None:
+        """Transition the state and announce it; every transition is emitted."""
+        with self._state_lock:
+            previous = self._state
+            self._state = value
+        if previous != value:
+            self._emit({"event": "connection_state", "value": value})
+
+    # --- queue management -------------------------------------------------
 
     def submit(self, command: dict) -> None:
-        """Queue one command dict; processed by run()."""
+        """Queue one command dict; processed by run().
+
+        Rejected immediately (with a busy_streaming error event, not queued)
+        when a stream is in flight: only cancel, status and shutdown are
+        meaningful then.
+        """
+        cmd = command.get("cmd")
+        if cmd in _BUSY_REJECT and self.state == STREAMING:
+            self.emit_error("busy_streaming", command=cmd)
+            return
         self._commands.put(command)
 
     def cancel(self) -> None:
@@ -68,6 +111,7 @@ class Worker:
         self._stop.set()
 
     def run(self) -> None:
+        self._set_state(DISCONNECTED)
         self._emit({"event": "state", "value": "ready"})
         while not self._stop.is_set():
             try:
@@ -101,7 +145,12 @@ class Worker:
     def emit_error(self, code: str, **extra) -> None:
         self._emit({"event": "error", "code": code, **extra})
 
+    # --- command handlers -------------------------------------------------
+
     def _handle_connect(self, params: dict) -> bool:
+        if self.state != DISCONNECTED:
+            self.emit_error("already_connected", state=self.state)
+            return True
         factory = self._factories.get(params.get("kind"))
         if factory is None:
             self.emit_error("unknown_transport", transport=params.get("kind"))
@@ -114,18 +163,26 @@ class Worker:
             )
         except Exception as exc:  # noqa: BLE001 - surfaced as an error event
             self._connection = None
+            self._set_state(DISCONNECTED)
             self.emit_error("connect_failed", message=str(exc))
             return True
         self._connection = connection
+        self._set_state(CONNECTED)
         self._emit({"event": "connected", "version": version})
         return True
 
     def _handle_disconnect(self, _params: dict) -> bool:
+        if self.state == STREAMING:
+            # Defensive: submit() rejects it earlier; only reachable via a
+            # command queued exactly at the streaming boundary.
+            self.emit_error("busy_streaming", command="disconnect")
+            return True
         if self._connection is None:
             self.emit_error("not_connected")
             return True
         self._connection.close()
         self._connection = None
+        self._set_state(DISCONNECTED)
         self._emit({"event": "disconnected"})
         return True
 
@@ -172,7 +229,9 @@ class Worker:
             self.emit_error("invalid_command", command="stream")
             return True
         self._cancel_event.clear()
+        self._set_state(STREAMING)
         result = self._connection.stream(lines, stop_event=self._cancel_event)
+        self._set_state(CONNECTED)
         self._emit(
             {
                 "event": "stream_done",
