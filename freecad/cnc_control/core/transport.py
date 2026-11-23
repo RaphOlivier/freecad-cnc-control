@@ -4,6 +4,7 @@ import os
 import queue
 import socket
 import threading
+import time
 from abc import ABC, abstractmethod
 from typing import Self
 
@@ -34,14 +35,20 @@ class Transport(ABC):
     def is_closed(self) -> bool:
         return self._closed.is_set()
 
-    def read_line(self) -> str | None:
-        """Return the next line without its newline; None when closed."""
+    def read_line(self, timeout: float | None = None) -> str | None:
+        """Return the next line without its newline; None when closed.
+
+        With a timeout, raises TimeoutError when no line arrives in time.
+        """
+        deadline = time.monotonic() + timeout if timeout is not None else None
         while True:
             # Check the buffer FIRST: a previous read may already hold
             # complete lines (controllers can send several at once).
             if b"\n" in self._buffer:
                 line, _, self._buffer = self._buffer.partition(b"\n")
                 return line.decode(errors="replace").rstrip("\r")
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(f"no line within {timeout} seconds")
             data = self.read()
             if data is None:
                 if self._buffer:
@@ -208,3 +215,44 @@ class PtyTransport(Transport):
                     pass
         self._master_fd = None
         self._slave_fd = None
+
+class SerialTransport(Transport):
+    """Serial transport (pyserial) — the real hardware path.
+
+    Uses serial_for_url, so URLs like loop:// work for hardware-free tests
+    (with pyserial installed). pyserial is imported lazily at open().
+    """
+
+    def __init__(self, port: str, baudrate: int = 115200) -> None:
+        super().__init__()
+        self._port = port
+        self._baudrate = baudrate
+        self._serial = None
+
+    def open(self) -> None:
+        import serial  # deferred: keeps the package importable without pyserial
+
+        self._serial = serial.serial_for_url(self._port, baudrate=self._baudrate, timeout=0.05)
+
+    def write(self, data: bytes) -> None:
+        if self._serial is None:
+            raise TransportError("serial port is not open")
+        try:
+            self._serial.write(data)
+        except Exception as exc:
+            raise TransportError(str(exc)) from exc
+
+    def read(self) -> bytes | None:
+        while not self._closed.is_set():
+            if self._serial is None:
+                return None
+            data = self._serial.read(4096)
+            if data:
+                return data
+        return None
+
+    def close(self) -> None:
+        super().close()
+        if self._serial is not None:
+            self._serial.close()
+            self._serial = None

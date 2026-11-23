@@ -140,3 +140,13 @@ def test_push_messages_do_not_acknowledge():
 
 def test_rx_buffer_size_constant():
     assert RX_BUFFER_SIZE == 128
+
+
+def test_cancel_event_stops_stream():
+    _server, client = MemoryTransport.pair()
+    stop = threading.Event()
+    stop.set()  # cancelled before anything is sent
+    result = CharacterCountingStreamer(client).run(["G0 X1", "G0 Y2"], stop_event=stop)
+    assert result.sent == 0
+    assert result.cancelled is True
+    assert not result.completed
