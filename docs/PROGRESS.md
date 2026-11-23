@@ -44,3 +44,4 @@ E7: real serial transport (pyserial behind the fake), stream cancellation; then 
 
 ## Next
 E8: end of the communication core; then passation checkpoint #2 before the FreeCAD part (E9+).
+- 2026-11-23: E7 final round: bounded reads, pytest-timeout in CI, fake-serve race fixed (stop_fake joined before silent-link scenarios). 62 tests green locally.

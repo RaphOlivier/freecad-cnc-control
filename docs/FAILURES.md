@@ -36,3 +36,17 @@ Rule 3 of the working rules: three failed attempts on the same point = stop and 
 - Root cause: incremental patches partially matched (signature had _params); silent-link tests closed the shared pair, which closes BOTH ends (MemoryTransport.pair shares its closed flag, so TimeoutError can never occur on a closed transport).
 - Fix: full rewrite of worker.py (E6+E7 combined); silent-link tests now keep the peer alive and simply never serve it.
 - Lesson: when a file needs several interacting changes, rewrite the whole file; never "fake silence" by closing a shared-state pair.
+
+## 2026-11-19 - E7: CI jobs canceled after 6h (hanging silent-link tests)
+
+- Symptom: all 3 CI jobs canceled at the 6h wall; local runs looked green only because of the shell `timeout 120` guard.
+- Root cause: transports' read() looped internally forever on a silent link, so read_line(timeout) never reached its deadline; CI ran pytest without any per-test timeout.
+- Fix: all read() are now bounded (b"" when idle, None only when closed); pytest-timeout added locally and in CI (timeout=120 in pyproject.toml).
+- Lesson: a deadline checked outside a blocking call is dead code; CI must enforce per-test timeouts instead of relying on shell wrappers.
+
+## 2026-11-23 - E7: 'silent link' tests raced with the fake's serve loop
+
+- Symptom: test_send_timeout_event failed 5/5: the send got an ok response instead of timing out.
+- Root cause (proven by instrumented repro): after stop.set(), the fake thread was blocked inside read(); it collected and served the line submitted right after, then exited. Stopping without waiting for death does not guarantee silence.
+- Fix: Backend.stop_fake() stops and joins the serve thread before the test submits anything.
+- Lesson: to fake silence, kill the responder synchronously first; stop flags do not take effect until the blocked call returns.

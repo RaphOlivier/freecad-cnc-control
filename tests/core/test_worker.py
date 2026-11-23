@@ -19,6 +19,7 @@ class Backend:
         self.peer = None
         self.fake = FakeGrbl()
         self.stop = threading.Event()
+        self.thread = None
 
     def factory(self, _params):
         controller, client = MemoryTransport.pair()
@@ -27,9 +28,19 @@ class Backend:
         return client
 
     def start_fake(self) -> None:
-        threading.Thread(
+        self.thread = threading.Thread(
             target=self.fake.serve, args=(self.peer, self.stop), daemon=True
-        ).start()
+        )
+        self.thread.start()
+
+    def stop_fake(self) -> None:
+        """Stop the fake AND wait for its death: a serve loop blocked in
+        read() can still process one last submitted line, which would
+        defeat the 'silent link' guarantee."""
+        self.stop.set()
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
+            self.thread = None
 
     def cleanup(self) -> None:
         self.stop.set()
@@ -204,7 +215,7 @@ def test_cancel_stopped_stream():
     try:
         session.submit({"cmd": "connect", "params": {"kind": "memory"}})
         assert session.wait_event("connected") is not None
-        backend.stop.set()  # silent link from here on: stream will stall
+        backend.stop_fake()  # guarantee the link is truly silent
         session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
         time.sleep(0.5)
         session.worker.cancel()
@@ -222,7 +233,7 @@ def test_send_timeout_event():
     try:
         session.submit({"cmd": "connect", "params": {"kind": "memory"}})
         assert session.wait_event("connected") is not None
-        backend.stop.set()
+        backend.stop_fake()
         session.submit({"cmd": "send", "params": {"line": "G0 X1", "timeout": 0.3}})
         event = session.wait_event("error")
         assert event is not None
