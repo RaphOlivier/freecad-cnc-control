@@ -50,3 +50,30 @@ Rule 3 of the working rules: three failed attempts on the same point = stop and 
 - Root cause (proven by instrumented repro): after stop.set(), the fake thread was blocked inside read(); it collected and served the line submitted right after, then exited. Stopping without waiting for death does not guarantee silence.
 - Fix: Backend.stop_fake() stops and joins the serve thread before the test submits anything.
 - Lesson: to fake silence, kill the responder synchronously first; stop flags do not take effect until the blocked call returns.
+
+## E8.2 (2026-11-24): connection-state test failures and botched patch attempt
+
+- Symptom: 3 tests of tests/core/test_worker_state.py failed; the failing
+  branch was committed and merged to main before any fix (main ran red,
+  run on 08c29ce).
+- Root causes: (1) run() called _set_state(DISCONNECTED) while the initial
+  state was already "disconnected", so the initial connection_state event
+  was never emitted (_set_state only emits on change); (2) tests used
+  wait_event("connection_state") which returns the FIRST event of that
+  name, not the latest value; (3) one test waited for stream_done on a
+  silent link without cancelling, so the worker stayed in "streaming".
+- Additional incident: the first patch attempt used a malformed sed
+  expression (multi-address with an invalid colon range) that failed with
+  "unexpected `," and patched nothing; the whole worker.py was then
+  rewritten instead of sed-patched.
+- Fixes: unconditional initial state emission in run(); wait_state(value)
+  helper; explicit cancel() before asserting return to "connected".
+  Both worker.py and test_worker_state.py rewritten whole.
+- Process lesson: no blind sed patches; commit/merge blocks must share the
+  pytest result with && guards, never run unconditionally.
+  - Addendum (same day): the E8.2 rewrite of worker.py reintroduced the
+    E7 heredoc trap in reverse: writing "\\n" in a quoted heredoc produced
+    a LITERAL backslash-n in encode_json_line, breaking
+    test_json_line_roundtrip. Fixed to a single backslash ("\n" source
+    escape, real newline). Rule: any change touching encode_json_line
+    must be validated by running test_json_line_roundtrip before commit.

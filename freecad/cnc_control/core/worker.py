@@ -40,7 +40,7 @@ _BUSY_REJECT = ("send", "stream", "disconnect")
 
 def encode_json_line(payload: dict) -> bytes:
     """Encode one protocol message as a JSON line (bytes, newline ended)."""
-    return (json.dumps(payload, sort_keys=True) + "\n").encode()
+    return (json.dumps(payload, sort_keys=True) + "\\n").encode()
 
 
 def decode_json_line(text: str) -> dict:
@@ -81,7 +81,7 @@ class Worker:
             return self._state
 
     def _set_state(self, value: str) -> None:
-        """Transition the state and announce it; every transition is emitted."""
+        """Transition the state and announce it; every change is emitted."""
         with self._state_lock:
             previous = self._state
             self._state = value
@@ -111,7 +111,11 @@ class Worker:
         self._stop.set()
 
     def run(self) -> None:
-        self._set_state(DISCONNECTED)
+        # Unconditional initial emission: there is no transition to a state
+        # the worker already starts in, but the GUI must still learn it.
+        with self._state_lock:
+            initial = self._state
+        self._emit({"event": "connection_state", "value": initial})
         self._emit({"event": "state", "value": "ready"})
         while not self._stop.is_set():
             try:
