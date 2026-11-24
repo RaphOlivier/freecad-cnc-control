@@ -40,7 +40,7 @@ _BUSY_REJECT = ("send", "stream", "disconnect")
 
 def encode_json_line(payload: dict) -> bytes:
     """Encode one protocol message as a JSON line (bytes, newline ended)."""
-    return (json.dumps(payload, sort_keys=True) + "\\n").encode()
+    return (json.dumps(payload, sort_keys=True) + "\n").encode()
 
 
 def decode_json_line(text: str) -> dict:

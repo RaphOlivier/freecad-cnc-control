@@ -77,3 +77,9 @@ Rule 3 of the working rules: three failed attempts on the same point = stop and 
     test_json_line_roundtrip. Fixed to a single backslash ("\n" source
     escape, real newline). Rule: any change touching encode_json_line
     must be validated by running test_json_line_roundtrip before commit.
+  - Addendum 2 (same day): the escape-fix sed was written with two
+    backslashes too many (matches 4 literal backslashes, the file has 2):
+    no-op, and the guarded merge chain still pushed a red main because
+    pytest's exit status was masked by the pipe to tail. Fixes: line
+    replacement by line number (grep -n + head/tail, no backslash-quoting
+    in patterns) and set -o pipefail before any pipeline-in-chain block.
