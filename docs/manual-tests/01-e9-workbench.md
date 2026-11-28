@@ -1,33 +1,36 @@
-# Manual procedure 1 — E9 workbench and docked panel
+# Procédure manuelle n°1 — Atelier et panneau ancré (E9)
 
-Owner-only procedure. Run it in FreeCAD 1.1 stable or 1.2 dev. Do **not**
-connect to a real machine: this step only checks that the workbench loads and
-that the panel does not touch the serial link by itself.
+Procédure réservée au propriétaire. À lancer dans FreeCAD 1.1 stable ou 1.2
+dev. **Ne pas se connecter à une machine réelle** : cette étape vérifie
+uniquement le chargement de l’atelier et que le panneau n’ouvre aucun lien
+série par lui-même.
 
-1. In FreeCAD, open **Edit → Preferences → Addon Manager → Custom
-   repositories**, click **+**, and enter the repository URL
-   `https://github.com/RaphOlivier/freecad-cnc-control` with branch `main`.
-   Then open **Tools → Addon manager**, select **CNC Control** and install it.
-   No GitHub release, tag or ZIP download is needed. Restart FreeCAD if the
-   manager asks for it.
-2. Select **CNC Control** in the workbench selector. Expected: the icon and
-   menu text appear, and a dock widget named **CNC Control** opens on the
-   right of the 3D view.
-3. Check the panel contents: transport selector (Serial/Socket), endpoint and
-   port/baud fields, Connect/Disconnect, link state, GRBL state, machine
-   position, GRBL version, four real-time buttons, six jog buttons and an
-   event log. No command is sent and no port is opened at this point.
-4. Move the dock to another edge, close it, then switch to another workbench
-   and back. Expected: no duplicate panel is created and the state label
-   still reads `disconnected`.
-5. Optional (virtual transport only): start a fake GRBL on a local TCP port,
-   select **Socket**, enter `127.0.0.1` and that port, then press **Connect**.
-   Expected: a `connected` event with `1.1h`, status polling updates the
-   machine position, jog buttons append `Jog ...` lines to the log, and
-   releasing a held jog button appends a jog-cancel real-time command.
-6. Press **Disconnect**. Expected: state returns to `disconnected` and
-   status polling stops.
+1. Dans FreeCAD, ouvre **Édition → Préférences → Addon Manager → Dépôts
+   personnalisés**, clique sur **+**, puis saisis l’URL du dépôt
+   `https://github.com/RaphOlivier/freecad-cnc-control` et la branche `main`.
+   Ouvre ensuite **Outils → Addon manager**, sélectionne **CNC Control** et
+   installe le module. Aucune release, aucun tag et aucun téléchargement de
+   ZIP ne sont nécessaires. Redémarre FreeCAD si le gestionnaire le demande.
+2. Sélectionne **CNC Control** dans le sélecteur d’ateliers. Résultat attendu :
+   l’icône et le libellé apparaissent, et un panneau ancré nommé
+   **CNC Control** s’ouvre à droite de la vue 3D.
+3. Vérifie le contenu du panneau : sélecteur de transport (Série/Socket),
+   champ d’adresse et champs port/baud, boutons Connexion/Déconnexion, état
+   du lien, état GRBL, position machine, version GRBL, quatre boutons temps
+   réel, six boutons de jog et un journal d’événements. À ce stade, aucune
+   commande n’est envoyée et aucun port n’est ouvert.
+4. Déplace le panneau sur un autre bord, ferme-le, puis change d’atelier et
+   reviens. Résultat attendu : aucun panneau en double et l’état du lien
+   reste `disconnected`.
+5. Facultatif (transport virtuel uniquement) : lance un faux GRBL sur un port
+   TCP local, sélectionne **Socket**, saisis `127.0.0.1` et ce port, puis
+   appuie sur **Connexion**. Résultat attendu : un événement `connected` avec
+   `1.1h`, l’interrogation d’état met à jour la position machine, les boutons
+   de jog ajoutent des lignes `Jog ...` au journal, et le relâchement d’un
+   bouton de jog maintenu ajoute une commande temps réel d’annulation de jog.
+6. Appuie sur **Déconnexion**. Résultat attendu : l’état repasse à
+   `disconnected` et l’interrogation d’état s’arrête.
 
-Report to the agent: FreeCAD version, OS, any Python traceback in the Report
-view, and whether each expected result matched. A software stop never
-replaces a hardware emergency stop.
+Rapporte à l’agent : version de FreeCAD, système d’exploitation, toute
+traceback Python dans la vue Rapport, et la conformité de chaque résultat
+attendu. Un arrêt logiciel ne remplace jamais un arrêt d’urgence matériel.

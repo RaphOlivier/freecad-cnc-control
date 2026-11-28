@@ -5,7 +5,7 @@ Project: FreeCAD add-on "CNC Control" (provisional name) to drive CNC machines f
 This file is read by coding agents (Mistral Vibe reads AGENTS.md; Claude Code reads CLAUDE.md, which points here).
 Orchestration context (owner, other projects, status, research): see `docs/handoff/README.md`.
 
-The conversation with the owner is in French. Code, comments, commit messages and repository documentation are in English (exception: the handoff documents in `docs/handoff/` and `docs/FRAMING.md` are in French). UI strings are translatable (English source).
+The conversation with the owner is in French. Code, comments, commit messages and repository documentation are in English (exceptions: the handoff documents in `docs/handoff/` and `docs/FRAMING.md` are in French; manual procedures in `docs/manual-tests/` are written in French during development, per owner decision 2026-11-28). UI strings are translatable (English source).
 
 ## 1. Goals and non-goals
 
