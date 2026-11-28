@@ -34,7 +34,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
       - name: Style check
-        run: ruff check freecad tests
+        run: ruff check freecad tests tools
       # Integration tests (compiled GRBL simulator) will be added at
       # step E16, Linux only. pyserial arrives via the dev dependency
       # group, so the serial

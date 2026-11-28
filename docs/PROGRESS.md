@@ -59,7 +59,7 @@ E8: end of the communication core; then passation checkpoint #2 before the FreeC
 - 2026-11-28: CI #24 failed on the intermediate commit `1fa4485` (preflight required a work offset that the worker did not yet supply); CI #25 is green on Linux, Windows and macOS for `521aeea`. Final state is green; no force-push or history rewrite was used.
 
 ## Next
-E9: FreeCAD adaptation layer, workbench, docked panel (connection, status, jog).
+E10: GRBL post-processor with operation comments and sending of the selected CAM Job.
 - 2026-11-28: E9 step 1: out-of-band real-time bytes (hold/resume/reset/jog_cancel/status_query) and explicit `$J=G91` jog steps in the worker/fake GRBL. 106 passed, 1 skipped, ruff clean.
 - 2026-11-28: E9 step 2: Qt compatibility adapter and injectable FreeCAD host, with offscreen Qt tests in CI; PySide6 added to the dev group per owner approval. 4 GUI tests green locally.
 - 2026-11-28: E9 step 3: Qt worker bridge (events pumped on the GUI thread) and docked panel with connection/status/real-time/fixed and continuous jog. 16 GUI tests green locally.
@@ -69,3 +69,5 @@ E9: FreeCAD adaptation layer, workbench, docked panel (connection, status, jog).
 - 2026-11-28: CI #30 is green on Linux, Windows and macOS for `e68b58e` (core/worker 106 passed + 1 skipped, GUI 18 passed, ruff clean). All automated tests are headless in CI. E9 code is complete; the only remaining check is the FreeCAD integration smoke test in manual procedure `docs/manual-tests/01-e9-workbench.md` (E9 in `LAUNCH_PROMPT.md` explicitly assigns it to the owner). The add-on installs via an Addon Manager custom repository (URL + branch `main`); no release or ZIP is required.
 - 2026-11-28: owner installed the add-on through the Addon Manager custom repository and reported that it behaves correctly. E9 is complete; work continues with E10.
 - 2026-11-28: E10 step 1: pure-Python GRBL post-processing core with `(OP: ...)` comments and removal of preflight-forbidden codes. 112 passed, 1 skipped, ruff clean.
+- 2026-11-28: E10 step 2: FreeCAD adapter reads the selected Job's active operations, namespaced `CNCControl_SendJob` command, explicit confirmation, preflight and check-mode choice in the panel. 27 headless GUI tests green locally; full suite 112 passed + 1 skipped, ruff clean. Commit `4327d11` pushed.
+- 2026-11-28: E10 step 3: loopback fake-GRBL socket helper and French manual procedure `docs/manual-tests/02-e10-cam-job.md` written for the owner. The remaining E10 check is that FreeCAD integration in the manual procedure; all automated tests are headless in CI.
