@@ -1,7 +1,7 @@
 """Docked control panel: connection, status, real-time controls and jog."""
 
 from freecad.cnc_control.freecad_adapter.host import translate
-from freecad.cnc_control.freecad_adapter.qt import QtCore, QtWidgets
+from freecad.cnc_control.freecad_adapter.qt import QtCore, QtGui, QtWidgets
 from freecad.cnc_control.gui.dialogs import JobDialogs
 
 _CONTEXT = "CncControl"
@@ -30,13 +30,28 @@ class CncControlPanel(QtWidgets.QWidget):
         self._jog_timer.timeout.connect(self._continuous_tick)
         self._jog_axis: str | None = None
         self._jog_sign = 1
+        self.setMinimumSize(200, 120)
         self._build_ui()
         self._connect_signals()
 
     # --- UI construction --------------------------------------------------
 
     def _build_ui(self) -> None:
-        layout = QtWidgets.QVBoxLayout(self)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self._scroll = QtWidgets.QScrollArea(self)
+        self._scroll.setObjectName("cnc_scroll_area")
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self._scroll.viewport().setBackgroundRole(QtGui.QPalette.Window)
+        self._scroll.viewport().setAutoFillBackground(True)
+        outer.addWidget(self._scroll)
+
+        content = QtWidgets.QWidget(self._scroll)
+        content.setObjectName("cnc_panel_content")
+        self._scroll.setWidget(content)
+        layout = QtWidgets.QVBoxLayout(content)
+        layout.setContentsMargins(4, 4, 4, 4)
 
         connection = QtWidgets.QGroupBox(_text("Connection"), self)
         form = QtWidgets.QFormLayout(connection)
@@ -279,6 +294,12 @@ class CncControlPanel(QtWidgets.QWidget):
                     axis=event.get("axis", ""),
                     distance=event.get("distance", ""),
                     feed=event.get("feed", ""),
+                )
+            )
+        elif kind == "realtime":
+            self._log(
+                _text("Real-time: {command}").format(
+                    command=event.get("command", "")
                 )
             )
         elif kind == "preflight":

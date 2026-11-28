@@ -10,7 +10,7 @@ from pathlib import Path
 from freecad.cnc_control.freecad_adapter.cam import post_process_selected_job
 from freecad.cnc_control.freecad_adapter.commands import SendJobCommand, command_name
 from freecad.cnc_control.freecad_adapter.host import FreeCADHost, attach_dock, translate
-from freecad.cnc_control.freecad_adapter.qt import QtWidgets
+from freecad.cnc_control.freecad_adapter.qt import QtCore, QtWidgets
 from freecad.cnc_control.gui.panel import CncControlPanel
 from freecad.cnc_control.gui.worker_bridge import WorkerBridge
 
@@ -62,9 +62,19 @@ class CncControlWorkbench(_WorkbenchBase):
         self._panel = CncControlPanel(
             self._bridge, job_source=post_process_selected_job
         )
-        self._dock = QtWidgets.QDockWidget(translate("CncControl", "CNC Control"))
+        dock = QtWidgets.QDockWidget(translate("CncControl", "CNC Control"))
+        self._dock = attach_dock(self._host, dock, "CncControlPanel")
         self._dock.setWidget(self._panel)
-        attach_dock(self._host, self._dock, "CncControlPanel")
+        self._dock.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
+        self._dock.setFeatures(
+            QtWidgets.QDockWidget.DockWidgetClosable
+            | QtWidgets.QDockWidget.DockWidgetMovable
+            | QtWidgets.QDockWidget.DockWidgetFloatable
+        )
+        self._dock.setMinimumSize(200, 120)
+        palette = self._host.main_window().palette()
+        self._dock.setPalette(palette)
+        self._panel.setPalette(palette)
         self._register_commands()
         if hasattr(self, "appendToolbar"):  # pragma: no cover - FreeCAD only
             self.appendToolbar("CNC", [command_name()])

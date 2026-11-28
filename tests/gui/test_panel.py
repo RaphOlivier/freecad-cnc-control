@@ -1,7 +1,7 @@
 """Headless tests for the docked panel's user actions and event updates."""
 
 from freecad.cnc_control.core.cam_post import PostResult
-from freecad.cnc_control.freecad_adapter.qt import QtCore, QtGui
+from freecad.cnc_control.freecad_adapter.qt import QtCore, QtGui, QtWidgets
 from freecad.cnc_control.gui.panel import CncControlPanel
 
 
@@ -126,6 +126,23 @@ def test_error_event_is_logged(qapp):
 
     assert panel.log_list.count() == 1
     assert "alarm_active" in panel.log_list.item(0).text()
+
+
+def test_realtime_event_is_logged(qapp):
+    panel, _bridge = make_panel(qapp)
+    panel.on_event({"event": "realtime", "command": "jog_cancel"})
+
+    assert "Real-time: jog_cancel" in panel.log_list.item(0).text()
+
+
+def test_panel_shrinks_and_scrolls_for_bottom_docking(qapp):
+    panel, _bridge = make_panel(qapp)
+    scroll = panel.findChild(QtWidgets.QScrollArea, "cnc_scroll_area")
+
+    assert scroll is not None
+    assert scroll.widgetResizable() is True
+    assert panel.minimumSize().height() <= 160
+    assert scroll.viewport().autoFillBackground() is True
 
 
 class FakeDialogs:

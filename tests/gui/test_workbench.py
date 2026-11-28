@@ -1,7 +1,7 @@
 """Workbench lifecycle tests with a fake FreeCADGui and host."""
 
 from freecad.cnc_control.freecad_adapter import workbench as workbench_module
-from freecad.cnc_control.freecad_adapter.qt import QtCore
+from freecad.cnc_control.freecad_adapter.qt import QtCore, QtGui, QtWidgets
 from tests.gui.test_adapter import FakeHost
 
 
@@ -77,6 +77,25 @@ def test_register_workbench_uses_freecadgui(monkeypatch):
 
     assert len(gui.added) == 1
     assert isinstance(gui.added[0], workbench_module.CncControlWorkbench)
+
+
+def test_dock_allows_all_areas_floating_and_host_palette(qapp):
+    host = FakeHost()
+    host.window.setPalette(QtGui.QPalette(QtGui.QColor("#123456")))
+    wb = workbench_module.CncControlWorkbench(
+        host=host, bridge_factory=FakeBridge
+    )
+
+    wb.Activated()
+
+    expected = QtGui.QColor("#123456")
+    features = wb._dock.features()
+    assert wb._dock.allowedAreas() == QtCore.Qt.AllDockWidgetAreas
+    assert features & QtWidgets.QDockWidget.DockWidgetClosable
+    assert features & QtWidgets.QDockWidget.DockWidgetMovable
+    assert features & QtWidgets.QDockWidget.DockWidgetFloatable
+    assert wb._dock.palette().color(QtGui.QPalette.Window) == expected
+    assert wb._panel.palette().color(QtGui.QPalette.Window) == expected
 
 
 def test_workbench_registers_send_job_command(qapp, monkeypatch):
