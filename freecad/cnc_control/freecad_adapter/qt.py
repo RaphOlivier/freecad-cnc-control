@@ -10,7 +10,13 @@ try:  # pragma: no cover - exercised inside FreeCAD
 except ImportError:  # pragma: no cover - depends on the host interpreter
     try:
         from PySide6 import QtCore, QtGui, QtWidgets
-    except ImportError:
-        from PySide2 import QtCore, QtGui, QtWidgets
+    except ImportError as pyside6_error:
+        try:
+            from PySide2 import QtCore, QtGui, QtWidgets
+        except ImportError as pyside2_error:
+            raise ImportError(
+                "No usable Qt bindings: PySide6 failed "
+                f"({pyside6_error}); PySide2 failed ({pyside2_error})"
+            ) from pyside6_error
 
 __all__ = ["QtCore", "QtGui", "QtWidgets"]

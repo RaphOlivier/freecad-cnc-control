@@ -1,4 +1,4 @@
-STATUS: BLOCKED
+STATUS: RUNNING
 
 # Progress log
 
@@ -64,4 +64,5 @@ E9: FreeCAD adaptation layer, workbench, docked panel (connection, status, jog).
 - 2026-11-28: E9 step 2: Qt compatibility adapter and injectable FreeCAD host, with offscreen Qt tests in CI; PySide6 added to the dev group per owner approval. 4 GUI tests green locally.
 - 2026-11-28: E9 step 3: Qt worker bridge (events pumped on the GUI thread) and docked panel with connection/status/real-time/fixed and continuous jog. 16 GUI tests green locally.
 - 2026-11-28: E9 step 4: workbench entry point and one reusable dock, corrected `package.xml` metadata and icon, manual procedure 01 written. 18 GUI tests green locally.
-- 2026-11-28: push blocked: the fine-grained PAT lacks repository permission `Workflows: write`, required to update `.github/workflows/ci.yml`. Two E9 commits are local only (`7ed779f`, `df2b5f6`). Owner must grant that permission; no force-push or history rewrite used.
+- 2026-11-28: push blocked: the fine-grained PAT lacked repository permission `Workflows: write`, required to update `.github/workflows/ci.yml`. Owner granted it; all E9 commits were pushed and `main` is aligned with `origin/main`. No force-push or history rewrite used.
+- 2026-11-28: CI #28 failed only on `ubuntu-latest` in the GUI step: PySide6 import raised ImportError and the adapter silently fell back to absent PySide2. The adapter now reports both errors so the root cause can be diagnosed; no extra package has been installed.
