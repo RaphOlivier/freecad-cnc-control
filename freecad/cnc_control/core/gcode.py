@@ -5,11 +5,14 @@ G-code that will actually be sent to the controller, not on CAM objects.
 
 Scope and assumptions (documented in docs/DECISIONS.md):
 
-- Coordinates are program coordinates (WPos), not machine coordinates. Work
-  offsets (G54..G59, G92) are recorded as warnings but are not applied.
+- Coordinates are program coordinates (WPos); work offsets are applied later,
+  by core/preflight.py, from the controller status report.
 - Motion is tracked modally: G0/G1/G2/G3 persist until another motion command.
 - Units are tracked modally; G20 values are converted to millimetres.
-- G2/G3 arcs are sampled at a fixed resolution for the path and bounds.
+- G2/G3 arcs are sampled at a fixed resolution for the path, while bounds use
+  the exact extrema of the arc (including helical off-plane interpolation).
+- Commands that can move the machine outside the analysed motion model
+  (G10, G28, G30, G38.x, G43.x, G53, G92.x) are refused by preflight.
 - Parentheses and semicolon comments are ignored. ``(OP: name)`` and
   ``(Operation: name)`` set the current operation name.
 """
@@ -23,6 +26,8 @@ from dataclasses import dataclass, field
 
 MM_PER_INCH = 25.4
 _ARC_SAMPLES = 9
+_TWO_PI = 2 * math.pi
+_EPS = 1e-9
 
 _COMMENT_RE = re.compile(r"\(([^)]*)\)")
 _OPERATION_RE = re.compile(r"^(?:OP|OPERATION)\s*:\s*(.+)$", re.IGNORECASE)
@@ -32,7 +37,7 @@ _WORD_RE = re.compile(
 
 _MOTION_CODES = {0: "G0", 1: "G1", 2: "G2", 3: "G3"}
 _PLANE_AXES = {17: (0, 1), 18: (0, 2), 19: (1, 2)}
-_UNSUPPORTED_MOTION = {28, 30, 53, 92}
+_UNSUPPORTED_G = {10, 28, 30, 43, 53, 92}  # offsets, homing moves, probing setup
 
 
 @dataclass(frozen=True)
@@ -42,8 +47,8 @@ class Bounds:
     minimum: tuple[float, float, float]
     maximum: tuple[float, float, float]
 
-    def as_dict(self) -> dict[str, tuple[float, float]]:
-        """Return ``{"x": (min, max), ...}`` for JSON events."""
+    def as_dict(self) -> dict[str, list[float]]:
+        """Return ``{"x": [min, max], ...}`` for JSON events."""
         return {
             axis: [self.minimum[index], self.maximum[index]]
             for index, axis in enumerate("xyz")
@@ -78,8 +83,19 @@ class GcodeAnalysis:
     line_segments: dict[int, list[int]] = field(default_factory=dict)
     operations: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    unsupported_motion: bool = False
     units: str = "mm"
     command_count: int = 0
+
+
+@dataclass(frozen=True)
+class _ArcGeometry:
+    """Resolved centre and sweep of one arc, in the active plane."""
+
+    center: tuple[float, float]
+    radius: float
+    start_angle: float
+    sweep: float  # radians, negative for G2 (clockwise)
 
 
 def _strip_comments(text: str) -> tuple[str, str | None]:
@@ -110,6 +126,12 @@ def _scaled(words: dict[str, float], letters: str, scale: float) -> dict[str, fl
     return {letter: words[letter] * scale for letter in letters if letter in words}
 
 
+def _is_unsupported_g(value: float) -> bool:
+    """True for commands that can change machine state outside our model."""
+    integer = math.floor(value)
+    return integer in _UNSUPPORTED_G or integer == 38  # G38.x probing cycles
+
+
 def _linear_target(
     current: tuple[float, float, float],
     axes: dict[str, float],
@@ -123,69 +145,140 @@ def _linear_target(
     return tuple(target)
 
 
-def _arc_center(
+def _sweep(start_angle: float, end_angle: float, clockwise: bool, full: bool) -> float:
+    """Signed sweep in the requested direction, in (-2pi, 0] or [0, 2pi)."""
+    if full:
+        return -_TWO_PI if clockwise else _TWO_PI
+    raw = end_angle - start_angle
+    sweep = raw % (-_TWO_PI) if clockwise else raw % _TWO_PI
+    if abs(sweep) < _EPS:
+        sweep = -_TWO_PI if clockwise else _TWO_PI
+    return sweep
+
+
+def _geometry_for_center(
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    center: tuple[float, float],
+    plane: int,
+    clockwise: bool,
+) -> _ArcGeometry | None:
+    first, second = _PLANE_AXES[plane]
+    radius = math.hypot(start[first] - center[0], start[second] - center[1])
+    if radius < _EPS:
+        return None
+    full = (
+        abs(start[first] - end[first]) < _EPS
+        and abs(start[second] - end[second]) < _EPS
+    )
+    start_angle = math.atan2(start[second] - center[1], start[first] - center[0])
+    end_angle = math.atan2(end[second] - center[1], end[first] - center[0])
+    return _ArcGeometry(
+        center,
+        radius,
+        start_angle,
+        _sweep(start_angle, end_angle, clockwise, full),
+    )
+
+
+def _arc_geometry(
     start: tuple[float, float, float],
     end: tuple[float, float, float],
     axes: dict[str, float],
-    plane_axes: tuple[int, int],
-    radius: float | None,
-) -> tuple[float, float] | None:
-    """Return the arc centre in the active plane, or None if undetermined."""
-    first, second = plane_axes
-    offsets = ("IJK"[first], "IJK"[second])
-    if offsets[0] in axes or offsets[1] in axes:
-        return (
-            start[first] + axes.get(offsets[0], 0.0),
-            start[second] + axes.get(offsets[1], 0.0),
+    plane: int,
+    clockwise: bool,
+) -> _ArcGeometry | None:
+    """Resolve the arc centre from IJK offsets or from an R word."""
+    first, second = _PLANE_AXES[plane]
+    offset_letters = ("IJK"[first], "IJK"[second])
+    if offset_letters[0] in axes or offset_letters[1] in axes:
+        center = (
+            start[first] + axes.get(offset_letters[0], 0.0),
+            start[second] + axes.get(offset_letters[1], 0.0),
         )
-    if radius is None:
+        return _geometry_for_center(start, end, center, plane, clockwise)
+
+    radius = axes.get("R")
+    if radius is None or abs(radius) < _EPS:
         return None
     x0, y0 = start[first], start[second]
     x1, y1 = end[first], end[second]
     dx, dy = x1 - x0, y1 - y0
     chord = math.hypot(dx, dy)
-    if chord == 0 or radius < chord / 2:
+    if chord < _EPS or abs(radius) < chord / 2:
         return None
     height = math.sqrt(max(0.0, radius * radius - (chord / 2) ** 2))
     mid_x, mid_y = (x0 + x1) / 2, (y0 + y1) / 2
     perp_x, perp_y = -dy / chord, dx / chord
-    # Both possible centres are kept by the caller through the sampled
-    # points; returning one is enough for a conservative bounds union.
-    return (mid_x + height * perp_x, mid_y + height * perp_y)
+    candidates = []
+    for sign in (1.0, -1.0):
+        center = (mid_x + sign * height * perp_x, mid_y + sign * height * perp_y)
+        geometry = _geometry_for_center(start, end, center, plane, clockwise)
+        if geometry is not None:
+            candidates.append(geometry)
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    # RS274: positive R selects the arc <= 180 degrees, negative R the long one.
+    if radius < 0:
+        return max(candidates, key=lambda item: abs(item.sweep))
+    return min(candidates, key=lambda item: abs(item.sweep))
+
+
+def _point_at(
+    angle: float,
+    progress: float,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    geometry: _ArcGeometry,
+    plane: int,
+) -> tuple[float, float, float]:
+    first, second = _PLANE_AXES[plane]
+    normal = 3 - first - second
+    point = [start[0], start[1], start[2]]
+    point[first] = geometry.center[0] + geometry.radius * math.cos(angle)
+    point[second] = geometry.center[1] + geometry.radius * math.sin(angle)
+    point[normal] = start[normal] + (end[normal] - start[normal]) * progress
+    return tuple(point)
 
 
 def _arc_points(
     start: tuple[float, float, float],
     end: tuple[float, float, float],
-    center: tuple[float, float] | None,
+    geometry: _ArcGeometry,
     plane: int,
-    clockwise: bool,
 ) -> tuple[tuple[float, float, float], ...]:
-    """Sample one arc; fall back to its endpoints when the centre is unknown."""
-    if center is None:
-        return (start, end)
-    first, second = _PLANE_AXES[plane]
-    start_angle = math.atan2(start[second] - center[1], start[first] - center[0])
-    end_angle = math.atan2(end[second] - center[1], end[first] - center[0])
-    sweep = end_angle - start_angle
-    if abs(sweep) < 1e-9 and start[:2] == end[:2]:
-        sweep = -2 * math.pi if clockwise else 2 * math.pi
-    elif clockwise:
-        while sweep > 0:
-            sweep -= 2 * math.pi
-    else:
-        while sweep < 0:
-            sweep += 2 * math.pi
-    radius = math.hypot(start[first] - center[0], start[second] - center[1])
-    points: list[tuple[float, float, float]] = []
+    """Sample one arc, including linear motion along the off-plane axis."""
+    points = []
     for index in range(_ARC_SAMPLES):
-        angle = start_angle + sweep * index / (_ARC_SAMPLES - 1)
-        point = [start[0], start[1], start[2]]
-        point[first] = center[0] + radius * math.cos(angle)
-        point[second] = center[1] + radius * math.sin(angle)
-        if index == _ARC_SAMPLES - 1:
-            point = list(end)
-        points.append(tuple(point))
+        progress = index / (_ARC_SAMPLES - 1)
+        angle = geometry.start_angle + geometry.sweep * progress
+        points.append(_point_at(angle, progress, start, end, geometry, plane))
+    points[-1] = end
+    return tuple(points)
+
+
+def _arc_extrema(
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    geometry: _ArcGeometry,
+    plane: int,
+) -> tuple[tuple[float, float, float], ...]:
+    """Exact arc extrema for bounds: endpoints plus the four quadrant points."""
+    points = [start, end]
+    magnitude = abs(geometry.sweep)
+    for quadrant in range(4):
+        angle = quadrant * math.pi / 2
+        if geometry.sweep < 0:
+            relative = -((angle - geometry.start_angle) % (-_TWO_PI))
+        else:
+            relative = (angle - geometry.start_angle) % _TWO_PI
+        if relative <= magnitude + _EPS:
+            progress = min(1.0, relative / magnitude)
+            points.append(
+                _point_at(angle, progress, start, end, geometry, plane)
+            )
     return tuple(points)
 
 
@@ -225,9 +318,15 @@ def analyze(lines: Iterable[str]) -> GcodeAnalysis:
 
         unsupported = False
         for value in g_codes:
-            if not value.is_integer():
+            if _is_unsupported_g(value):
+                unsupported = True
+                result.unsupported_motion = True
+                result.warnings.append(
+                    f"line {line_number}: G{value:g} can move the machine "
+                    "and is not analysed"
+                )
                 continue
-            integer = int(value)
+            integer = int(value) if value.is_integer() else None
             if integer in _MOTION_CODES:
                 motion = _MOTION_CODES[integer]
             elif integer == 20:
@@ -240,11 +339,6 @@ def analyze(lines: Iterable[str]) -> GcodeAnalysis:
                 absolute = False
             elif integer in _PLANE_AXES:
                 plane = integer
-            elif integer in _UNSUPPORTED_MOTION:
-                unsupported = True
-                result.warnings.append(
-                    f"line {line_number}: G{integer} can move the machine and is not analysed"
-                )
 
         axes = _scaled(words, "XYZIJKR", scale)
         feed = words["F"] * scale if "F" in words else None
@@ -254,16 +348,26 @@ def analyze(lines: Iterable[str]) -> GcodeAnalysis:
 
         target = _linear_target(current, axes, absolute)
         if motion in ("G2", "G3"):
-            first, second = _PLANE_AXES[plane]
-            center = _arc_center(
-                current, target, axes, (first, second), axes.get("R"),
+            geometry = _arc_geometry(
+                current, target, axes, plane, motion == "G2"
             )
-            points = _arc_points(current, target, center, plane, motion == "G2")
-            result.warnings.append(
-                f"line {line_number}: arc sampled at {_ARC_SAMPLES} points"
-            )
+            if geometry is None:
+                points = (current, target)
+                bounds_points = points
+                result.warnings.append(
+                    f"line {line_number}: arc centre undetermined; "
+                    "only endpoints are bounded"
+                )
+            else:
+                points = _arc_points(current, target, geometry, plane)
+                bounds_points = _arc_extrema(current, target, geometry, plane)
+                result.warnings.append(
+                    f"line {line_number}: arc sampled at {_ARC_SAMPLES} points; "
+                    "bounds use exact extrema"
+                )
         else:
             points = (current, target)
+            bounds_points = points
 
         index = len(result.segments)
         result.segments.append(
@@ -276,7 +380,7 @@ def analyze(lines: Iterable[str]) -> GcodeAnalysis:
             )
         )
         result.line_segments.setdefault(line_number, []).append(index)
-        result.bounds = _extend(result.bounds, points)
+        result.bounds = _extend(result.bounds, bounds_points)
         current = target
 
     return result

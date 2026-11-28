@@ -1,5 +1,7 @@
 """E7: G-code analysis (bounds, path, source mapping, operation names)."""
 
+import math
+
 import pytest
 
 from freecad.cnc_control.core.gcode import analyze
@@ -57,7 +59,47 @@ def test_unsupported_motion_is_warned_and_not_analysed():
     analysis = analyze(["G21 G90", "G28 X0 Y0", "G1 X1"])
     assert len(analysis.segments) == 1
     assert analysis.segments[0].end == (1.0, 0.0, 0.0)
+    assert analysis.unsupported_motion is True
     assert any("G28" in warning for warning in analysis.warnings)
+
+
+def test_probing_and_offset_commands_are_flagged():
+    analysis = analyze(
+        ["G21 G90", "G38.2 Z-100 F50", "G10 L2 P1 X190", "G43.1 Z10", "G1 X1"]
+    )
+    assert analysis.unsupported_motion is True
+    assert len(analysis.segments) == 1
+    assert analysis.segments[0].end == (1.0, 0.0, 0.0)
+    assert any("G38.2" in warning for warning in analysis.warnings)
+    assert any("G10" in warning for warning in analysis.warnings)
+
+
+def test_arc_bounds_include_exact_extrema_between_samples():
+    angle = math.radians(22.5)
+    start_x, start_y = 100 * math.cos(angle), 100 * math.sin(angle)
+    analysis = analyze(
+        [
+            "G21 G90 G17",
+            f"G0 X{start_x:.6f} Y{start_y:.6f}",
+            f"G2 X{start_x:.6f} Y{start_y:.6f} I{-start_x:.6f} J{-start_y:.6f}",
+        ]
+    )
+    assert analysis.bounds.minimum == pytest.approx((-100.0, -100.0, 0.0))
+    assert analysis.bounds.maximum == pytest.approx((100.0, 100.0, 0.0))
+
+
+def test_r_arc_uses_the_short_arc_for_positive_radius():
+    analysis = analyze(["G21 G90 G17", "G0 X0 Y0", "G2 X10 Y0 R10"])
+    assert analysis.bounds.minimum == pytest.approx((0.0, 0.0, 0.0))
+    assert analysis.bounds.maximum == pytest.approx((10.0, 10 - math.sqrt(75), 0.0))
+
+
+def test_helical_arc_interpolates_the_off_plane_axis():
+    analysis = analyze(["G21 G90 G17", "G0 X0 Y0", "G2 X10 Y0 Z-5 I5 J0"])
+    arc = analysis.segments[1]
+    assert arc.points[4][2] == pytest.approx(-2.5)
+    assert arc.points[-1][2] == pytest.approx(-5.0)
+    assert analysis.bounds.minimum[2] == pytest.approx(-5.0)
 
 
 def test_empty_program_has_no_bounds():
