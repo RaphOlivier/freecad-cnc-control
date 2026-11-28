@@ -8,6 +8,7 @@ from freecad.cnc_control.core.grbl_protocol import (
     Alarm,
     Error,
     Ok,
+    Setting,
     StatusReport,
     Welcome,
     parse_line,
@@ -67,6 +68,25 @@ class GrblConnection:
                 self.last_status = parsed
                 return parsed
             # Skip push messages that arrive first.
+
+    def read_settings(self, timeout: float = 10.0) -> dict[str, float]:
+        """Read ``$$`` settings as a code-to-value mapping."""
+        self._transport.write_line("$$")
+        settings: dict[str, float] = {}
+        while True:
+            line = self._transport.read_line(timeout=timeout)
+            if line is None:
+                raise ConnectionError("transport closed while reading settings")
+            parsed = parse_line(line)
+            if isinstance(parsed, Setting):
+                try:
+                    settings[parsed.code] = float(parsed.value)
+                except ValueError:
+                    continue
+            elif isinstance(parsed, (Ok, Error, Alarm)):
+                if isinstance(parsed, Ok):
+                    return settings
+                raise ConnectionError(f"$$ rejected: {parsed}")
 
     def stream(self, lines, stop_event=None) -> StreamResult:
         """Stream G-code lines with character counting (see core/streamer.py)."""

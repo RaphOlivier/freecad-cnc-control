@@ -108,6 +108,17 @@ def test_stream_over_connection():
         conv.cleanup()
 
 
+def test_read_settings_from_dollar_dollar():
+    conv = Conversation()
+    try:
+        connection = conv.connect()
+        settings = connection.read_settings()
+        assert settings["130"] == 200.0
+        assert settings["100"] == 250.0
+    finally:
+        conv.cleanup()
+
+
 def test_close():
     conv = Conversation()
     try:

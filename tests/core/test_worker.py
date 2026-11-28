@@ -161,7 +161,7 @@ def test_stream_done():
     try:
         session.submit({"cmd": "connect", "params": {"kind": "memory"}})
         session.wait_event("connected")
-        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
+        session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         event = session.wait_event("stream_done")
         assert event is not None
         assert event["sent"] == 2
@@ -216,7 +216,7 @@ def test_cancel_stopped_stream():
         session.submit({"cmd": "connect", "params": {"kind": "memory"}})
         assert session.wait_event("connected") is not None
         backend.stop_fake()  # guarantee the link is truly silent
-        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
+        session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         time.sleep(0.5)
         session.worker.cancel()
         event = session.wait_event("stream_done")

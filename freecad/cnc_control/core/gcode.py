@@ -45,7 +45,7 @@ class Bounds:
     def as_dict(self) -> dict[str, tuple[float, float]]:
         """Return ``{"x": (min, max), ...}`` for JSON events."""
         return {
-            axis: (self.minimum[index], self.maximum[index])
+            axis: [self.minimum[index], self.maximum[index]]
             for index, axis in enumerate("xyz")
         }
 

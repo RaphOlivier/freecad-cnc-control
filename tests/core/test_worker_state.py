@@ -80,7 +80,7 @@ def test_streaming_state_lifecycle():
         _connect(session)
         # Silent link: the stream blocks, so we can observe the mid-flight state.
         backend.stop_fake()
-        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
+        session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         assert wait_state(session, "streaming", timeout=5.0)
         assert session.worker.state == "streaming"
         session.worker.cancel()
@@ -99,12 +99,12 @@ def test_send_and_disconnect_refused_while_streaming():
     try:
         _connect(session)
         backend.stop_fake()
-        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
+        session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         assert wait_state(session, "streaming", timeout=5.0)
         # Rejected at submission time, never queued behind the stream.
         session.submit({"cmd": "send", "params": {"line": "G0 X9"}})
         session.submit({"cmd": "disconnect"})
-        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1"]}})
+        session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1"]}})
         codes = [e["code"] for e in session.events if e.get("event") == "error"]
         assert codes.count("busy_streaming") == 3
         session.worker.cancel()
@@ -124,7 +124,7 @@ def test_status_allowed_while_streaming():
         session.submit({"cmd": "send", "params": {"line": "G0 X5"}})
         session.wait_event("response")
         backend.stop_fake()
-        session.submit({"cmd": "stream", "params": {"lines": ["G0 X1", "G0 Y2"]}})
+        session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         assert wait_state(session, "streaming", timeout=5.0)
         session.submit({"cmd": "status"})
         session.worker.cancel()
