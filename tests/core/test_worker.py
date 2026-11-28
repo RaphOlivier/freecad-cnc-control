@@ -71,6 +71,12 @@ class Session:
         self.submit({"cmd": "shutdown"})
         self.thread.join(timeout=2.0)
 
+    def approve(self, lines) -> None:
+        """Run a preflight and wait for its result before streaming."""
+        self.submit({"cmd": "preflight", "params": {"lines": lines}})
+        event = self.wait_event("preflight")
+        assert event is not None and event["accepted"] is True
+
 
 def test_json_line_roundtrip():
     encoded = encode_json_line({"event": "connected", "version": "1.1h"})
@@ -161,6 +167,7 @@ def test_stream_done():
     try:
         session.submit({"cmd": "connect", "params": {"kind": "memory"}})
         session.wait_event("connected")
+        session.approve(["G0 X1", "G0 Y2"])
         session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         event = session.wait_event("stream_done")
         assert event is not None
@@ -215,7 +222,8 @@ def test_cancel_stopped_stream():
     try:
         session.submit({"cmd": "connect", "params": {"kind": "memory"}})
         assert session.wait_event("connected") is not None
-        backend.stop_fake()  # guarantee the link is truly silent
+        session.approve(["G0 X1", "G0 Y2"])
+        backend.fake.silence_motion()  # no ack for motion lines, $$ still works
         session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         time.sleep(0.5)
         session.worker.cancel()

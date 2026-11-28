@@ -69,6 +69,18 @@ class GrblConnection:
                 return parsed
             # Skip push messages that arrive first.
 
+    def work_offset(self, timeout: float = 2.0) -> tuple[float, float, float] | None:
+        """Return WCO in mm from the status report, or None if unavailable."""
+        status = self.poll_status(timeout=timeout)
+        if status.wco is not None and len(status.wco) >= 3:
+            return tuple(status.wco[:3])
+        if status.mpos is not None and status.wpos is not None:
+            return tuple(
+                machine - work
+                for machine, work in zip(status.mpos[:3], status.wpos[:3])
+            )
+        return None
+
     def read_settings(self, timeout: float = 10.0) -> dict[str, float]:
         """Read ``$$`` settings as a code-to-value mapping."""
         self._transport.write_line("$$")

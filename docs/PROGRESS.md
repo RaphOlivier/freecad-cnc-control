@@ -55,3 +55,4 @@ E8: end of the communication core; then passation checkpoint #2 before the FreeC
 - 2026-11-28: CI #21 green on Linux, Windows and macOS for `f4aaa32`.
 - 2026-11-28: independent review of E7/E8 found safety gaps (stream not bound to preflight, injected `$C`, arc bounds, WCO). Owner approved fixes before E9. Step 1: analyser hardening (exact arc extrema, R direction, helix, G38/G10/G43 detection); 89 passed, 1 skipped, ruff clean.
 - 2026-11-28: step 2: preflight applies WCO from status, refuses unknown WCO and unanalysed motion, and validates job lines against injected `$`/real-time bytes; 10 preflight tests green.
+- 2026-11-28: step 3: worker binds streams to an accepted preflight for identical lines, rechecks `$$`/WCO at stream time, latches early cancels, makes shutdown out-of-band, and verifies `$C` deactivation. 100 passed, 1 skipped, ruff clean.

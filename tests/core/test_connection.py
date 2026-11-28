@@ -119,6 +119,16 @@ def test_read_settings_from_dollar_dollar():
         conv.cleanup()
 
 
+def test_work_offset_comes_from_the_status_report():
+    conv = Conversation()
+    try:
+        conv.fake.set_work_offset((190.0, -5.0, 0.0))
+        connection = conv.connect()
+        assert connection.work_offset() == (190.0, -5.0, 0.0)
+    finally:
+        conv.cleanup()
+
+
 def test_close():
     conv = Conversation()
     try:

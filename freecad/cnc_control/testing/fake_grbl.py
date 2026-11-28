@@ -43,6 +43,8 @@ class FakeGrbl:
         self._settings = dict(DEFAULT_SETTINGS)
         self._error_queue: list[int] = []
         self._alarm_queue: list[int] = []
+        self._fail_check_mode_off = False
+        self._silence_motion = False
 
     # ----- test controls -------------------------------------------------
     def inject_error(self, code: int) -> None:
@@ -53,6 +55,18 @@ class FakeGrbl:
         """Deliver ALARM:x with the next response and lock G-code."""
         self._alarm_queue.append(code)
         self._state = "Alarm"
+
+    def set_work_offset(self, offset: tuple[float, float, float]) -> None:
+        """Set the reported WCO without moving the machine (test control)."""
+        self._wco = tuple(offset)
+
+    def fail_check_mode_off(self) -> None:
+        """Make the next ``$C`` that would disable check mode fail."""
+        self._fail_check_mode_off = True
+
+    def silence_motion(self) -> None:
+        """Stop acknowledging motion lines while still serving $$ and status."""
+        self._silence_motion = True
 
     # ----- protocol --------------------------------------------------------
     @property
@@ -156,12 +170,17 @@ class FakeGrbl:
                 self._state = "Idle"
             return b"ok\r\n"
         if text == "$C":
+            if self._fail_check_mode_off and self._check_mode:
+                self._fail_check_mode_off = False
+                return b"error:20\r\n"
             self._check_mode = not self._check_mode
             return b"ok\r\n"
         if text.startswith("$"):
             return b"error:3\r\n"
         if self._state == "Alarm":
             return b"error:9\r\n"
+        if self._silence_motion:
+            return b""
         self._apply_motion(text)
         return b"ok\r\n"
 

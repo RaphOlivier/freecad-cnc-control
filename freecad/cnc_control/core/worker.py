@@ -13,6 +13,11 @@ exposed through "connection_state" events:
     disconnected --connect ok--> connected --stream--> streaming --> connected
     connected  --disconnect--> disconnected
     streaming  --cancel/failure/done--> connected
+
+Safety gate (post-review E8): every stream must be preceded, on this worker,
+by an accepted preflight for the exact same lines. The check is repeated with
+fresh ``$$`` and status data at stream time; a real run additionally needs
+``confirmed: true``. Check mode streams need preflight but no confirmation.
 """
 
 import json
@@ -22,7 +27,12 @@ import threading
 from freecad.cnc_control.core.connection import GrblConnection
 from freecad.cnc_control.core.gcode import analyze
 from freecad.cnc_control.core.grbl_protocol import Alarm, Error, Ok
-from freecad.cnc_control.core.preflight import MachineLimits, check_job
+from freecad.cnc_control.core.preflight import (
+    MachineLimits,
+    check_job,
+    validate_job_lines,
+)
+from freecad.cnc_control.core.streamer import StreamResult
 from freecad.cnc_control.core.transport import SerialTransport, SocketTransport
 
 DEFAULT_TRANSPORT_FACTORIES = {
@@ -37,6 +47,7 @@ CONNECTED = "connected"
 STREAMING = "streaming"
 
 # Commands rejected outright while a stream is in flight.
+# Shutdown is deliberately absent: it is out-of-band and cancels the stream.
 _BUSY_REJECT = ("send", "stream", "disconnect")
 
 
@@ -73,6 +84,8 @@ class Worker:
         self._connection: GrblConnection | None = None
         self._state = DISCONNECTED
         self._state_lock = threading.Lock()
+        self._approved_job: tuple[tuple[str, ...], bool] | None = None
+        self._rejected_job: tuple[tuple[str, ...], list[str]] | None = None
 
     # --- connection state -------------------------------------------------
 
@@ -97,20 +110,30 @@ class Worker:
 
         Rejected immediately (with a busy_streaming error event, not queued)
         when a stream is in flight: only cancel, status and shutdown are
-        meaningful then.
+        meaningful then. Shutdown is out-of-band and cancels the stream.
         """
         cmd = command.get("cmd")
+        if cmd == "shutdown":
+            self.stop()
+            return
         if cmd in _BUSY_REJECT and self.state == STREAMING:
             self.emit_error("busy_streaming", command=cmd)
             return
         self._commands.put(command)
 
     def cancel(self) -> None:
-        """Out-of-band stream cancellation (like real-time bytes, not queued)."""
+        """Out-of-band stream cancellation (like real-time bytes, not queued).
+
+        The flag is latched: a cancel issued before the stream handler starts
+        cancels that stream instead of being silently erased.
+        """
         self._cancel_event.set()
 
     def stop(self) -> None:
+        """Stop the worker and cancel any in-flight stream immediately."""
         self._stop.set()
+        self._cancel_event.set()
+        self._emit({"event": "bye"})
 
     def run(self) -> None:
         # Unconditional initial emission: there is no transition to a state
@@ -142,7 +165,6 @@ class Worker:
             "settings": self._handle_settings,
             "preflight": self._handle_preflight,
             "stream": self._handle_stream,
-            "shutdown": self._handle_shutdown,
         }
         handler = handlers.get(command.get("cmd"))
         if handler is None:
@@ -152,6 +174,42 @@ class Worker:
 
     def emit_error(self, code: str, **extra) -> None:
         self._emit({"event": "error", "code": code, **extra})
+
+    # --- safety helpers ---------------------------------------------------
+
+    def _prepare_job(self, params: dict, command: str):
+        """Analyse and check a program with fresh controller data."""
+        lines = params.get("lines")
+        if not isinstance(lines, list):
+            self.emit_error("invalid_command", command=command)
+            return None
+        require_confirmation = params.get("require_confirmation", True)
+        if not isinstance(require_confirmation, bool):
+            self.emit_error("invalid_command", command=command)
+            return None
+        reasons = validate_job_lines(lines)
+        if reasons:
+            self.emit_error("invalid_job_lines", reasons=reasons)
+            return None
+        analysis = analyze(lines)
+        try:
+            settings = self._connection.read_settings(
+                timeout=params.get("timeout") or 10.0
+            )
+            offset = self._connection.work_offset(
+                timeout=params.get("status_timeout") or 2.0
+            )
+        except (TimeoutError, ConnectionError) as exc:
+            self.emit_error("preflight_unavailable", message=str(exc))
+            return None
+        limits = MachineLimits.from_settings(settings)
+        result = check_job(
+            analysis,
+            limits,
+            require_confirmation=require_confirmation,
+            work_offset=offset,
+        )
+        return tuple(lines), result
 
     # --- command handlers -------------------------------------------------
 
@@ -171,10 +229,14 @@ class Worker:
             )
         except Exception as exc:  # noqa: BLE001 - surfaced as an error event
             self._connection = None
+            self._approved_job = None
+            self._rejected_job = None
             self._set_state(DISCONNECTED)
             self.emit_error("connect_failed", message=str(exc))
             return True
         self._connection = connection
+        self._approved_job = None
+        self._rejected_job = None
         self._set_state(CONNECTED)
         self._emit({"event": "connected", "version": version})
         return True
@@ -190,6 +252,8 @@ class Worker:
             return True
         self._connection.close()
         self._connection = None
+        self._approved_job = None
+        self._rejected_job = None
         self._set_state(DISCONNECTED)
         self._emit({"event": "disconnected"})
         return True
@@ -204,7 +268,7 @@ class Worker:
             return True
         try:
             parsed = self._connection.send_line(line, timeout=params.get("timeout") or 10.0)
-        except TimeoutError:
+        except (TimeoutError, ConnectionError):
             self.emit_error("response_timeout", command="send")
             return True
         self._emit({"event": "response", **_response_payload(parsed)})
@@ -216,7 +280,7 @@ class Worker:
             return True
         try:
             status = self._connection.poll_status(timeout=params.get("timeout") or 2.0)
-        except TimeoutError:
+        except (TimeoutError, ConnectionError):
             self.emit_error("response_timeout", command="status")
             return True
         self._emit(
@@ -236,7 +300,7 @@ class Worker:
             settings = self._connection.read_settings(
                 timeout=params.get("timeout") or 10.0
             )
-        except TimeoutError:
+        except (TimeoutError, ConnectionError):
             self.emit_error("response_timeout", command="settings")
             return True
         limits = MachineLimits.from_settings(settings)
@@ -253,24 +317,18 @@ class Worker:
         if self._connection is None:
             self.emit_error("not_connected")
             return True
-        lines = params.get("lines")
-        if not isinstance(lines, list):
-            self.emit_error("invalid_command", command="preflight")
+        prepared = self._prepare_job(params, "preflight")
+        if prepared is None:
+            self._approved_job = None
+            self._rejected_job = None
             return True
-        analysis = analyze(lines)
-        try:
-            settings = self._connection.read_settings(
-                timeout=params.get("timeout") or 10.0
-            )
-        except TimeoutError:
-            self.emit_error("response_timeout", command="preflight")
-            return True
-        limits = MachineLimits.from_settings(settings)
-        result = check_job(
-            analysis,
-            limits,
-            require_confirmation=bool(params.get("require_confirmation", True)),
-        )
+        key, result = prepared
+        if result.accepted:
+            self._approved_job = (key, result.requires_confirmation)
+            self._rejected_job = None
+        else:
+            self._approved_job = None
+            self._rejected_job = (key, list(result.reasons))
         self._emit({"event": "preflight", **result.as_dict()})
         return True
 
@@ -278,52 +336,124 @@ class Worker:
         if self._connection is None:
             self.emit_error("not_connected")
             return True
+        if self.state == STREAMING:
+            self.emit_error("busy_streaming", command="stream")
+            return True
         lines = params.get("lines")
         if not isinstance(lines, list):
             self.emit_error("invalid_command", command="stream")
             return True
-        check_mode = bool(params.get("check_mode"))
-        if not check_mode and params.get("confirmed") is not True:
+        check_mode = params.get("check_mode", False)
+        confirmed = params.get("confirmed", False)
+        if not isinstance(check_mode, bool) or not isinstance(confirmed, bool):
+            self.emit_error("invalid_command", command="stream")
+            return True
+
+        key = tuple(lines)
+        if self._approved_job is None or self._approved_job[0] != key:
+            if self._rejected_job is not None and self._rejected_job[0] == key:
+                self.emit_error(
+                    "preflight_rejected", reasons=list(self._rejected_job[1])
+                )
+            else:
+                self.emit_error("preflight_required", command="stream")
+            return True
+        prepared = self._prepare_job(
+            {
+                "lines": lines,
+                "require_confirmation": self._approved_job[1],
+                "timeout": params.get("timeout"),
+                "status_timeout": params.get("status_timeout"),
+            },
+            "stream",
+        )
+        if prepared is None:
+            self._approved_job = None
+            self._rejected_job = None
+            return True
+        _, result = prepared
+        if not result.accepted:
+            self._approved_job = None
+            self._rejected_job = (key, list(result.reasons))
+            self.emit_error("preflight_rejected", reasons=result.reasons)
+            return True
+        if not check_mode and result.requires_confirmation and not confirmed:
             self.emit_error("confirmation_required", command="stream")
             return True
+
+        if self._cancel_event.is_set():
+            # A cancel issued before this point is latched: send nothing.
+            self._cancel_event.clear()
+            self._approved_job = None
+            self._rejected_job = None
+            self._emit(
+                {
+                    "event": "stream_done",
+                    "sent": 0,
+                    "acked": 0,
+                    "completed": False,
+                    "cancelled": True,
+                    "check_mode": False,
+                    "errors": [],
+                    "alarms": [],
+                }
+            )
+            return True
+
         if check_mode:
             try:
                 response = self._connection.send_line("$C")
-            except TimeoutError:
-                self.emit_error("response_timeout", command="check_mode_on")
+            except (TimeoutError, ConnectionError) as exc:
+                self._approved_job = None
+                self._rejected_job = None
+                self.emit_error("check_mode_on_failed", message=str(exc))
                 return True
             if not isinstance(response, Ok):
-                self.emit_error("check_mode_failed", **_response_payload(response))
+                self._approved_job = None
+                self._rejected_job = None
+                self.emit_error(
+                    "check_mode_on_failed", response=_response_payload(response)
+                )
                 return True
             self._emit({"event": "check_mode", "enabled": True})
 
-        self._cancel_event.clear()
+        result_stream = StreamResult()
         self._set_state(STREAMING)
         try:
-            result = self._connection.stream(lines, stop_event=self._cancel_event)
+            result_stream = self._connection.stream(
+                lines, stop_event=self._cancel_event
+            )
+        except (TimeoutError, ConnectionError) as exc:
+            self.emit_error("stream_failed", message=str(exc))
         finally:
             self._set_state(CONNECTED)
+            self._approved_job = None
+            self._rejected_job = None
+            self._cancel_event.clear()
             if check_mode:
                 try:
-                    self._connection.send_line("$C")
-                except TimeoutError:
-                    self.emit_error("response_timeout", command="check_mode_off")
+                    off_response = self._connection.send_line("$C")
+                except (TimeoutError, ConnectionError) as exc:
+                    self.emit_error("check_mode_off_failed", message=str(exc))
                 else:
-                    self._emit({"event": "check_mode", "enabled": False})
+                    if isinstance(off_response, Ok):
+                        self._emit({"event": "check_mode", "enabled": False})
+                    else:
+                        self.emit_error(
+                            "check_mode_off_failed",
+                            response=_response_payload(off_response),
+                        )
+
         self._emit(
             {
                 "event": "stream_done",
-                "sent": result.sent,
-                "acked": result.acked,
-                "completed": result.completed,
-                "cancelled": result.cancelled,
+                "sent": result_stream.sent,
+                "acked": result_stream.acked,
+                "completed": result_stream.completed,
+                "cancelled": result_stream.cancelled,
                 "check_mode": check_mode,
-                "errors": [_response_payload(e) for e in result.errors],
-                "alarms": [_response_payload(a) for a in result.alarms],
+                "errors": [_response_payload(e) for e in result_stream.errors],
+                "alarms": [_response_payload(a) for a in result_stream.alarms],
             }
         )
         return True
-
-    def _handle_shutdown(self, _params: dict) -> bool:
-        self._emit({"event": "bye"})
-        return False

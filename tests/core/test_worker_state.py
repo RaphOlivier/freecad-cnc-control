@@ -32,6 +32,12 @@ def _connect(session):
     assert session.wait_event("connected") is not None
 
 
+def _approve(session, lines):
+    session.submit({"cmd": "preflight", "params": {"lines": lines}})
+    event = session.wait_event("preflight")
+    assert event is not None and event["accepted"] is True
+
+
 def test_initial_state_event_is_disconnected():
     session = Session({})
     try:
@@ -78,8 +84,9 @@ def test_streaming_state_lifecycle():
     session = Session({"memory": backend.factory})
     try:
         _connect(session)
+        _approve(session, ["G0 X1", "G0 Y2"])
         # Silent link: the stream blocks, so we can observe the mid-flight state.
-        backend.stop_fake()
+        backend.fake.silence_motion()
         session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         assert wait_state(session, "streaming", timeout=5.0)
         assert session.worker.state == "streaming"
@@ -98,7 +105,8 @@ def test_send_and_disconnect_refused_while_streaming():
     session = Session({"memory": backend.factory})
     try:
         _connect(session)
-        backend.stop_fake()
+        _approve(session, ["G0 X1", "G0 Y2"])
+        backend.fake.silence_motion()
         session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         assert wait_state(session, "streaming", timeout=5.0)
         # Rejected at submission time, never queued behind the stream.
@@ -123,7 +131,8 @@ def test_status_allowed_while_streaming():
         _connect(session)
         session.submit({"cmd": "send", "params": {"line": "G0 X5"}})
         session.wait_event("response")
-        backend.stop_fake()
+        _approve(session, ["G0 X1", "G0 Y2"])
+        backend.fake.silence_motion()
         session.submit({"cmd": "stream", "params": {"confirmed": True, "lines": ["G0 X1", "G0 Y2"]}})
         assert wait_state(session, "streaming", timeout=5.0)
         session.submit({"cmd": "status"})
