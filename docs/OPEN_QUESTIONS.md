@@ -1,7 +1,7 @@
 # Open questions
 
-- Confirm the namespace/package layout expected by the Addon Manager for a workbench (H-07, E0-01).
-- Confirm package.xml schema details against the Addon Manager documentation before E16.
+- Confirm the namespace/package layout expected by the Addon Manager for a workbench (H-07, E0-01). Resolved 2026-11-28 by E1-07: `freecad/cnc_control/init_gui.py` with `package.xml` at the repository root.
+- Confirm package.xml schema details against the Addon Manager documentation before E16. Resolved 2026-11-28: Addon Academy manifest verifies `Package_Metadata` namespace, required `classname` and `icon`, and optional `subdirectory`; real installation still needs manual procedure 01.
 - Final maintainer email for package.xml (placeholder: GitHub noreply).
 - PySide wheels availability for Python 3.14 on the owner machine (needed at E9). Resolved 2026-11-28: owner approved PySide6 as a dev dependency; the `cp310-abi3` wheel installs on Python 3.14 and CI Python 3.12.
 - Plan drift (2026-11-28): LAUNCH_PROMPT E7 = G-code analysis, E8 = pre-job checks; the merged E7/E8 commits delivered serial robustness, dev dependencies and connection state instead. Do we implement the missing G-code analysis and pre-job safety checks before E9, or accept the current core as the end of E8 and start the FreeCAD layer now? Owner decision needed because the missing checks are safety-critical. Resolved 2026-11-28: owner chose to implement the missing E7/E8 scope before E9.

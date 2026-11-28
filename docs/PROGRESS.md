@@ -62,3 +62,5 @@ E8: end of the communication core; then passation checkpoint #2 before the FreeC
 E9: FreeCAD adaptation layer, workbench, docked panel (connection, status, jog).
 - 2026-11-28: E9 step 1: out-of-band real-time bytes (hold/resume/reset/jog_cancel/status_query) and explicit `$J=G91` jog steps in the worker/fake GRBL. 106 passed, 1 skipped, ruff clean.
 - 2026-11-28: E9 step 2: Qt compatibility adapter and injectable FreeCAD host, with offscreen Qt tests in CI; PySide6 added to the dev group per owner approval. 4 GUI tests green locally.
+- 2026-11-28: E9 step 3: Qt worker bridge (events pumped on the GUI thread) and docked panel with connection/status/real-time/fixed and continuous jog. 16 GUI tests green locally.
+- 2026-11-28: E9 step 4: workbench entry point and one reusable dock, corrected `package.xml` metadata and icon, manual procedure 01 written. 18 GUI tests green locally.
