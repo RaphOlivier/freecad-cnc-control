@@ -1,4 +1,4 @@
-STATUS: BLOCKED
+STATUS: RUNNING
 
 # Progress log
 
@@ -48,3 +48,4 @@ E8: end of the communication core; then passation checkpoint #2 before the FreeC
 ## Next
 - 2026-11-28: development resumed from a fresh clone on the owner's machine. `main` is at 899de7f (E8.2 merged). 68 test functions are defined; CI on that commit is green on Linux and Windows, while the macOS job was cancelled by runner capacity (no test failure). The local Python has no pytest or pip, so tests could not be rerun locally.
 - 2026-11-28: plan drift identified. `docs/LAUNCH_PROMPT.md` assigns E7 to G-code analysis and E8 to pre-job checks, but the merged E7/E8 work delivered serial robustness, dev dependencies and explicit connection state. G-code parsing, machine-limit checks, explicit confirmation and GRBL check mode are still absent. This is safety-critical scope: owner decision requested in `docs/OPEN_QUESTIONS.md` before writing code.
+- 2026-11-28: GitHub MCP connected from the project with a fine-grained PAT stored outside the repo; local `opencode.json` added and documented as TOOL-01. Local pytest is unavailable (`No module named pytest`); CI remains the test gate.
