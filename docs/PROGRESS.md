@@ -1,4 +1,4 @@
-STATUS: RUNNING
+STATUS: NEEDS_OWNER
 
 # Progress log
 
@@ -59,7 +59,7 @@ E8: end of the communication core; then passation checkpoint #2 before the FreeC
 - 2026-11-28: CI #24 failed on the intermediate commit `1fa4485` (preflight required a work offset that the worker did not yet supply); CI #25 is green on Linux, Windows and macOS for `521aeea`. Final state is green; no force-push or history rewrite was used.
 
 ## Next
-E10: GRBL post-processor with operation comments and sending of the selected CAM Job.
+Owner: update the add-on, rerun manual procedure 01 (dock placement, floating palette, step-by-step fake GRBL check) and report any remaining mismatch. Then run manual procedure 02 for E10. Agent resumes with E11 after that feedback.
 - 2026-11-28: E9 step 1: out-of-band real-time bytes (hold/resume/reset/jog_cancel/status_query) and explicit `$J=G91` jog steps in the worker/fake GRBL. 106 passed, 1 skipped, ruff clean.
 - 2026-11-28: E9 step 2: Qt compatibility adapter and injectable FreeCAD host, with offscreen Qt tests in CI; PySide6 added to the dev group per owner approval. 4 GUI tests green locally.
 - 2026-11-28: E9 step 3: Qt worker bridge (events pumped on the GUI thread) and docked panel with connection/status/real-time/fixed and continuous jog. 16 GUI tests green locally.
