@@ -4,9 +4,12 @@ Owner-only procedure. Run it in FreeCAD 1.1 stable or 1.2 dev. Do **not**
 connect to a real machine: this step only checks that the workbench loads and
 that the panel does not touch the serial link by itself.
 
-1. Install the add-on from the Git repository with the FreeCAD Addon Manager
-   (custom repository URL: `https://github.com/RaphOlivier/freecad-cnc-control`).
-   Restart FreeCAD if the manager asks for it.
+1. In FreeCAD, open **Edit → Preferences → Addon Manager → Custom
+   repositories**, click **+**, and enter the repository URL
+   `https://github.com/RaphOlivier/freecad-cnc-control` with branch `main`.
+   Then open **Tools → Addon manager**, select **CNC Control** and install it.
+   No GitHub release, tag or ZIP download is needed. Restart FreeCAD if the
+   manager asks for it.
 2. Select **CNC Control** in the workbench selector. Expected: the icon and
    menu text appear, and a dock widget named **CNC Control** opens on the
    right of the 3D view.
