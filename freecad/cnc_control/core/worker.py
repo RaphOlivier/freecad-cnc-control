@@ -274,13 +274,18 @@ class Worker:
         if factory is None:
             self.emit_error("unknown_transport", transport=params.get("kind"))
             return True
+        transport = None
         try:
-            connection = GrblConnection(factory(params))
+            transport = factory(params)
+            transport.open()
+            connection = GrblConnection(transport)
             timeout = params.get("timeout")
             version = (
                 connection.connect(timeout=timeout) if timeout else connection.connect()
             )
         except Exception as exc:  # noqa: BLE001 - surfaced as an error event
+            if transport is not None:
+                transport.close()
             self._connection = None
             self._approved_job = None
             self._rejected_job = None

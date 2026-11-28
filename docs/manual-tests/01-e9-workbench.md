@@ -15,7 +15,7 @@ série par lui-même.
    ZIP ne sont nécessaires. Redémarre FreeCAD si le gestionnaire le demande.
    Pour reprendre une version déjà installée, utilise *Outils → Addon manager
    → Mise à jour*, puis redémarre FreeCAD. Si le bouton *Mise à jour*
-   n'apparaît pas (version `0.0.1` installée avant le changement de version),
+   n'apparaît pas (version antérieure à `0.0.3` installée),
    désinstalle **CNC Control** puis réinstalle-le depuis le même dépôt
    personnalisé : cela ne touche pas tes documents FreeCAD.
 2. Sélectionne **CNC Control** dans le sélecteur d’ateliers. Résultat attendu :

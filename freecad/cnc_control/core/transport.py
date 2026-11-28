@@ -20,6 +20,9 @@ class Transport(ABC):
         self._closed = threading.Event()
         self._buffer = b""
 
+    def open(self) -> None:
+        """Prepare the link; no-op for transports ready on creation."""
+
     @abstractmethod
     def write(self, data: bytes) -> None:
         """Send raw bytes (G-code lines and real-time command bytes)."""
