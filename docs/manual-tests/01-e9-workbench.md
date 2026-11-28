@@ -14,7 +14,10 @@ série par lui-même.
    installe le module. Aucune release, aucun tag et aucun téléchargement de
    ZIP ne sont nécessaires. Redémarre FreeCAD si le gestionnaire le demande.
    Pour reprendre une version déjà installée, utilise *Outils → Addon manager
-   → Mise à jour*, puis redémarre FreeCAD.
+   → Mise à jour*, puis redémarre FreeCAD. Si le bouton *Mise à jour*
+   n'apparaît pas (version `0.0.1` installée avant le changement de version),
+   désinstalle **CNC Control** puis réinstalle-le depuis le même dépôt
+   personnalisé : cela ne touche pas tes documents FreeCAD.
 2. Sélectionne **CNC Control** dans le sélecteur d’ateliers. Résultat attendu :
    l’icône et le libellé apparaissent, et un panneau ancré nommé
    **CNC Control** s’ouvre à droite de la vue 3D.
