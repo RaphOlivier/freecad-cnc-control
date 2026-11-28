@@ -1,4 +1,4 @@
-STATUS: NEEDS_OWNER
+STATUS: RUNNING
 
 # Progress log
 
@@ -67,3 +67,4 @@ E9: FreeCAD adaptation layer, workbench, docked panel (connection, status, jog).
 - 2026-11-28: push blocked: the fine-grained PAT lacked repository permission `Workflows: write`, required to update `.github/workflows/ci.yml`. Owner granted it; all E9 commits were pushed and `main` is aligned with `origin/main`. No force-push or history rewrite used.
 - 2026-11-28: CI #28/#29 failed only on `ubuntu-latest` in the GUI step: PySide6 could not import because `libEGL.so.1` is absent from the runner. The adapter now reports both binding errors. Owner approved installing `libegl1` on the Linux CI runner; the workflow now does so before the GUI tests.
 - 2026-11-28: CI #30 is green on Linux, Windows and macOS for `e68b58e` (core/worker 106 passed + 1 skipped, GUI 18 passed, ruff clean). All automated tests are headless in CI. E9 code is complete; the only remaining check is the FreeCAD integration smoke test in manual procedure `docs/manual-tests/01-e9-workbench.md` (E9 in `LAUNCH_PROMPT.md` explicitly assigns it to the owner). The add-on installs via an Addon Manager custom repository (URL + branch `main`); no release or ZIP is required.
+- 2026-11-28: owner installed the add-on through the Addon Manager custom repository and reported that it behaves correctly. E9 is complete; work continues with E10.
