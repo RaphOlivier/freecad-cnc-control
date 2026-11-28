@@ -24,11 +24,14 @@ jobs:
           pip install --group dev
       - name: Core and worker tests (no FreeCAD, no Qt)
         run: pytest tests/core tests/worker
+      - name: GUI tests (headless Qt)
+        run: pytest tests/gui
+        env:
+          QT_QPA_PLATFORM: offscreen
       - name: Style check
         run: ruff check freecad tests
-      # GUI tests (tests/gui, headless Qt) will be added at step E9,
-      # once the PySide version alignment is settled. Integration tests
-      # (compiled GRBL simulator) will be added at step E3, Linux only.
-      # pyserial arrives via the dev dependency group, so the serial
+      # Integration tests (compiled GRBL simulator) will be added at
+      # step E16, Linux only. pyserial arrives via the dev dependency
+      # group, so the serial
       # transport test (pyserial loop://, software-only) now runs here
       # on all three OSes instead of being skipped.
