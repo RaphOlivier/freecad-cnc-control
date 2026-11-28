@@ -1,5 +1,4 @@
-STATUS: RUNNING
-STATUS: NOT_STARTED
+STATUS: BLOCKED
 
 # Progress log
 
@@ -45,3 +44,7 @@ E7: real serial transport (pyserial behind the fake), stream cancellation; then 
 ## Next
 E8: end of the communication core; then passation checkpoint #2 before the FreeCAD part (E9+).
 - 2026-11-23: E7 final round: bounded reads, pytest-timeout in CI, fake-serve race fixed (stop_fake joined before silent-link scenarios). 62 tests green locally.
+
+## Next
+- 2026-11-28: development resumed from a fresh clone on the owner's machine. `main` is at 899de7f (E8.2 merged). 68 test functions are defined; CI on that commit is green on Linux and Windows, while the macOS job was cancelled by runner capacity (no test failure). The local Python has no pytest or pip, so tests could not be rerun locally.
+- 2026-11-28: plan drift identified. `docs/LAUNCH_PROMPT.md` assigns E7 to G-code analysis and E8 to pre-job checks, but the merged E7/E8 work delivered serial robustness, dev dependencies and explicit connection state. G-code parsing, machine-limit checks, explicit confirmation and GRBL check mode are still absent. This is safety-critical scope: owner decision requested in `docs/OPEN_QUESTIONS.md` before writing code.
