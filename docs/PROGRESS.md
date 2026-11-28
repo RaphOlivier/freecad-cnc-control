@@ -52,3 +52,4 @@ E8: end of the communication core; then passation checkpoint #2 before the FreeC
 - 2026-11-28: local commits `e9a851a` and `dd956ab` pushed to `origin/main` (fast-forward, no force). Git uses a local credential helper that reads the PAT file without storing the token in configuration (TOOL-02).
 - 2026-11-28: owner confirmed the plan-drift option: fill the missing E7/E8 scope before E9. E7 (G-code analysis) added in `core/gcode.py` with 6 tests; 73 passed, 1 skipped locally, ruff clean.
 - 2026-11-28: E8 (plan) added: `$$` settings reading, `core/preflight.py` travel/confirmation checks, worker `settings` and `preflight` events, explicit confirmation gate for real streams and `$C` check mode. 85 passed, 1 skipped locally, ruff clean.
+- 2026-11-28: CI #21 green on Linux, Windows and macOS for `f4aaa32`.
