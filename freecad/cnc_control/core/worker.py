@@ -21,12 +21,18 @@ fresh ``$$`` and status data at stream time; a real run additionally needs
 """
 
 import json
+import math
 import queue
 import threading
 
 from freecad.cnc_control.core.connection import GrblConnection
 from freecad.cnc_control.core.gcode import analyze
-from freecad.cnc_control.core.grbl_protocol import Alarm, Error, Ok
+from freecad.cnc_control.core.grbl_protocol import (
+    REALTIME_COMMANDS,
+    Alarm,
+    Error,
+    Ok,
+)
 from freecad.cnc_control.core.preflight import (
     MachineLimits,
     check_job,
@@ -48,7 +54,9 @@ STREAMING = "streaming"
 
 # Commands rejected outright while a stream is in flight.
 # Shutdown is deliberately absent: it is out-of-band and cancels the stream.
-_BUSY_REJECT = ("send", "stream", "disconnect")
+_BUSY_REJECT = ("send", "stream", "disconnect", "jog")
+
+_REALTIME_NAMES = {data: name for name, data in REALTIME_COMMANDS.items()}
 
 
 def encode_json_line(payload: dict) -> bytes:
@@ -79,6 +87,7 @@ class Worker:
         self._factories = transport_factories or DEFAULT_TRANSPORT_FACTORIES
         self._emit = emit or (lambda event: None)
         self._commands: queue.Queue = queue.Queue()
+        self._realtime_queue: queue.Queue[bytes] = queue.Queue()
         self._stop = threading.Event()
         self._cancel_event = threading.Event()
         self._connection: GrblConnection | None = None
@@ -109,12 +118,15 @@ class Worker:
         """Queue one command dict; processed by run().
 
         Rejected immediately (with a busy_streaming error event, not queued)
-        when a stream is in flight: only cancel, status and shutdown are
-        meaningful then. Shutdown is out-of-band and cancels the stream.
+        when a stream is in flight: only cancel, status, realtime and shutdown
+        are meaningful then. Realtime bytes and shutdown are out-of-band.
         """
         cmd = command.get("cmd")
         if cmd == "shutdown":
             self.stop()
+            return
+        if cmd == "realtime":
+            self._queue_realtime(command.get("params") or {})
             return
         if cmd in _BUSY_REJECT and self.state == STREAMING:
             self.emit_error("busy_streaming", command=cmd)
@@ -133,6 +145,7 @@ class Worker:
         """Stop the worker and cancel any in-flight stream immediately."""
         self._stop.set()
         self._cancel_event.set()
+        self._clear_realtime()
         self._emit({"event": "bye"})
 
     def run(self) -> None:
@@ -143,6 +156,8 @@ class Worker:
         self._emit({"event": "connection_state", "value": initial})
         self._emit({"event": "state", "value": "ready"})
         while not self._stop.is_set():
+            if self._connection is not None:
+                self._pump_realtime()
             try:
                 command = self._commands.get(timeout=0.05)
             except queue.Empty:
@@ -161,6 +176,7 @@ class Worker:
             "connect": self._handle_connect,
             "disconnect": self._handle_disconnect,
             "send": self._handle_send,
+            "jog": self._handle_jog,
             "status": self._handle_status,
             "settings": self._handle_settings,
             "preflight": self._handle_preflight,
@@ -174,6 +190,43 @@ class Worker:
 
     def emit_error(self, code: str, **extra) -> None:
         self._emit({"event": "error", "code": code, **extra})
+
+    # --- real-time commands -----------------------------------------------
+
+    def _queue_realtime(self, params: dict) -> None:
+        """Accept a real-time byte without placing it behind G-code lines."""
+        command = params.get("command")
+        if command not in REALTIME_COMMANDS:
+            self.emit_error("invalid_command", command="realtime")
+            return
+        if self._connection is None:
+            self.emit_error("not_connected")
+            return
+        self._realtime_queue.put(REALTIME_COMMANDS[command])
+
+    def _pump_realtime(self) -> None:
+        """Write queued real-time bytes from the worker thread only."""
+        while True:
+            try:
+                data = self._realtime_queue.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                self._connection.send_realtime(data)
+            except (TimeoutError, ConnectionError) as exc:
+                self.emit_error("realtime_failed", message=str(exc))
+                return
+            self._emit(
+                {"event": "realtime", "command": _REALTIME_NAMES.get(data, "unknown")}
+            )
+
+    def _clear_realtime(self) -> None:
+        """Discard stale bytes when the link is replaced or closed."""
+        while True:
+            try:
+                self._realtime_queue.get_nowait()
+            except queue.Empty:
+                return
 
     # --- safety helpers ---------------------------------------------------
 
@@ -231,12 +284,14 @@ class Worker:
             self._connection = None
             self._approved_job = None
             self._rejected_job = None
+            self._clear_realtime()
             self._set_state(DISCONNECTED)
             self.emit_error("connect_failed", message=str(exc))
             return True
         self._connection = connection
         self._approved_job = None
         self._rejected_job = None
+        self._clear_realtime()
         self._set_state(CONNECTED)
         self._emit({"event": "connected", "version": version})
         return True
@@ -254,6 +309,7 @@ class Worker:
         self._connection = None
         self._approved_job = None
         self._rejected_job = None
+        self._clear_realtime()
         self._set_state(DISCONNECTED)
         self._emit({"event": "disconnected"})
         return True
@@ -272,6 +328,50 @@ class Worker:
             self.emit_error("response_timeout", command="send")
             return True
         self._emit({"event": "response", **_response_payload(parsed)})
+        return True
+
+    def _handle_jog(self, params: dict) -> bool:
+        """Run one explicit incremental jog step (``$J=G91``)."""
+        if self._connection is None:
+            self.emit_error("not_connected")
+            return True
+        axis = params.get("axis")
+        distance = params.get("distance")
+        feed = params.get("feed")
+        if axis not in ("X", "Y", "Z"):
+            self.emit_error("invalid_command", command="jog")
+            return True
+        if not all(isinstance(value, (int, float)) and math.isfinite(value)
+                   for value in (distance, feed)):
+            self.emit_error("invalid_command", command="jog")
+            return True
+        if distance == 0 or feed <= 0:
+            self.emit_error("invalid_command", command="jog")
+            return True
+        try:
+            status = self._connection.poll_status(timeout=1.0)
+        except (TimeoutError, ConnectionError) as exc:
+            self.emit_error("preflight_unavailable", message=str(exc))
+            return True
+        if status.state.lower().startswith("alarm"):
+            self.emit_error("alarm_active", state=status.state)
+            return True
+        line = f"$J=G91 {axis}{distance:g} F{feed:g}"
+        try:
+            response = self._connection.send_line(line, timeout=params.get("timeout") or 2.0)
+        except (TimeoutError, ConnectionError):
+            self.emit_error("response_timeout", command="jog")
+            return True
+        self._emit(
+            {
+                "event": "jog",
+                "axis": axis,
+                "distance": distance,
+                "feed": feed,
+                "line": line,
+            }
+        )
+        self._emit({"event": "response", **_response_payload(response)})
         return True
 
     def _handle_status(self, params: dict) -> bool:
@@ -421,7 +521,15 @@ class Worker:
         self._set_state(STREAMING)
         try:
             result_stream = self._connection.stream(
-                lines, stop_event=self._cancel_event
+                lines,
+                stop_event=self._cancel_event,
+                realtime_queue=self._realtime_queue,
+                on_realtime=lambda data: self._emit(
+                    {
+                        "event": "realtime",
+                        "command": _REALTIME_NAMES.get(data, "unknown"),
+                    }
+                ),
             )
         except (TimeoutError, ConnectionError) as exc:
             self.emit_error("stream_failed", message=str(exc))

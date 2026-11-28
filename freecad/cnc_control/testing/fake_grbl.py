@@ -28,6 +28,9 @@ DEFAULT_SETTINGS = {
 REALTIME_BYTES = frozenset({ord("?"), ord("!"), ord("~"), CMD_SOFT_RESET[0], CMD_JOG_CANCEL[0]})
 HELP_LINE = "[HLP:$$ $# $G $I $N $x=val $Nx=line $J=line $SLP $C $X $H ~ ! ? ctrl-x]"
 _AXIS_RE = re.compile(r"([XYZ])(-?\d+(?:\.\d+)?)")
+_JOG_RE = re.compile(
+    r"\$J=(?:G9[01]\s+)?([XYZ])(-?\d+(?:\.\d+)?)\s+F(\d+(?:\.\d+)?)", re.IGNORECASE
+)
 
 
 class FakeGrbl:
@@ -174,6 +177,16 @@ class FakeGrbl:
                 self._fail_check_mode_off = False
                 return b"error:20\r\n"
             self._check_mode = not self._check_mode
+            return b"ok\r\n"
+        jog = _JOG_RE.fullmatch(text.strip())
+        if jog is not None:
+            if self._state == "Alarm":
+                return b"error:9\r\n"
+            axis, distance, _feed = jog.groups()
+            self._state = "Jog"
+            current = dict(zip("XYZ", self._mpos))
+            current[axis.upper()] = current[axis.upper()] + float(distance)
+            self._mpos = tuple(current[name] for name in "XYZ")
             return b"ok\r\n"
         if text.startswith("$"):
             return b"error:3\r\n"

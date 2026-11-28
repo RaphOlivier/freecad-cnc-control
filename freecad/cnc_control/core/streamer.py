@@ -12,6 +12,7 @@ Sources: https://github.com/gnea/grbl/wiki/Grbl-v1.1-Interface (streaming
 protocols section).
 """
 
+import queue
 import threading
 from collections import deque
 from dataclasses import dataclass, field
@@ -64,19 +65,38 @@ class CharacterCountingStreamer:
     def _ack(self) -> None:
         self._inflight -= self._pending.popleft()
 
-    def run(self, lines, stop_event: threading.Event | None = None) -> StreamResult:
-        """Stream lines; returns a StreamResult. Never sends past the buffer."""
+    def run(
+        self,
+        lines,
+        stop_event: threading.Event | None = None,
+        realtime_queue: "queue.Queue[bytes] | None" = None,
+        on_realtime=None,
+    ) -> StreamResult:
+        """Stream lines; returns a StreamResult. Never sends past the buffer.
+
+        Real-time bytes are drained from ``realtime_queue`` at every loop head
+        and written before the next poll, so they never wait for G-code acks.
+        """
         result = StreamResult()
-        queue = deque(lines)
-        while queue or self._pending:
+        waiting = deque(lines)
+        while waiting or self._pending:
+            if realtime_queue is not None:
+                while True:
+                    try:
+                        data = realtime_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    self.write_realtime(data)
+                    if on_realtime is not None:
+                        on_realtime(data)
             if stop_event is not None and stop_event.is_set():
                 result.cancelled = True
                 return result
             if not result.errors and not result.alarms:
-                while queue and self._can_send(queue[0]):
-                    self._send(queue.popleft())
+                while waiting and self._can_send(waiting[0]):
+                    self._send(waiting.popleft())
                     result.sent += 1
-            if queue and not self._pending and not self._can_send(queue[0]):
+            if waiting and not self._pending and not self._can_send(waiting[0]):
                 return result  # head line can never fit: never send it
             try:
                 response = self._transport.read_line(timeout=0.2)

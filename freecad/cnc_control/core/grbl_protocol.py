@@ -45,6 +45,16 @@ SPINDLE_OVERRIDE_COMMANDS = {
     "decrease_1": b"\x9d",
 }
 
+# Named real-time commands accepted by the worker. Each value is one raw byte,
+# never queued behind a G-code line (commands.md).
+REALTIME_COMMANDS = {
+    "hold": CMD_FEED_HOLD,
+    "resume": CMD_CYCLE_RESUME,
+    "reset": CMD_SOFT_RESET,
+    "jog_cancel": CMD_JOG_CANCEL,
+    "status_query": CMD_STATUS_QUERY,
+}
+
 # Alarm codes 1-9 (Grbl-v1.1-Interface wiki).
 ALARM_DESCRIPTIONS = {
     1: "Hard limit triggered. Machine position is likely lost. Re-homing is highly recommended.",
