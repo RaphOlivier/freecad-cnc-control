@@ -94,8 +94,17 @@ def test_dock_allows_all_areas_floating_and_host_palette(qapp):
     assert features & QtWidgets.QDockWidget.DockWidgetClosable
     assert features & QtWidgets.QDockWidget.DockWidgetMovable
     assert features & QtWidgets.QDockWidget.DockWidgetFloatable
+    viewport = wb._panel._scroll.viewport()
+    content = wb._panel.findChild(QtWidgets.QWidget, "cnc_panel_content")
     assert wb._dock.palette().color(QtGui.QPalette.Window) == expected
     assert wb._panel.palette().color(QtGui.QPalette.Window) == expected
+    assert viewport.palette().color(QtGui.QPalette.Window) == expected
+    assert content.palette().color(QtGui.QPalette.Window) == expected
+
+    floated = QtGui.QColor("#abcdef")
+    host.window.setPalette(QtGui.QPalette(floated))
+    wb._dock.topLevelChanged.emit(True)
+    assert viewport.palette().color(QtGui.QPalette.Window) == floated
 
 
 def test_workbench_registers_send_job_command(qapp, monkeypatch):

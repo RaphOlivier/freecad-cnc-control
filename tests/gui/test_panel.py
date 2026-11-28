@@ -135,14 +135,23 @@ def test_realtime_event_is_logged(qapp):
     assert "Real-time: jog_cancel" in panel.log_list.item(0).text()
 
 
-def test_panel_shrinks_and_scrolls_for_bottom_docking(qapp):
+def test_panel_shrinks_and_scrolls_with_host_colours(qapp):
     panel, _bridge = make_panel(qapp)
     scroll = panel.findChild(QtWidgets.QScrollArea, "cnc_scroll_area")
+    viewport = scroll.viewport()
+    content = scroll.widget()
 
-    assert scroll is not None
     assert scroll.widgetResizable() is True
     assert panel.minimumSize().height() <= 160
-    assert scroll.viewport().autoFillBackground() is True
+    assert viewport.objectName() == "cnc_scroll_viewport"
+    assert viewport.autoFillBackground() is True
+    assert "palette(window)" in panel.styleSheet()
+
+    host_palette = QtGui.QPalette(QtGui.QColor("#654321"))
+    panel.apply_host_palette(host_palette)
+    expected = QtGui.QColor("#654321")
+    for widget in (panel, viewport, content, panel.connect_button):
+        assert widget.palette().color(QtGui.QPalette.Window) == expected
 
 
 class FakeDialogs:

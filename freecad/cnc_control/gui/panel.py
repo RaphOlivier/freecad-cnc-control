@@ -43,12 +43,15 @@ class CncControlPanel(QtWidgets.QWidget):
         self._scroll.setObjectName("cnc_scroll_area")
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        self._scroll.viewport().setBackgroundRole(QtGui.QPalette.Window)
-        self._scroll.viewport().setAutoFillBackground(True)
+        viewport = self._scroll.viewport()
+        viewport.setObjectName("cnc_scroll_viewport")
+        viewport.setBackgroundRole(QtGui.QPalette.Window)
+        viewport.setAutoFillBackground(True)
         outer.addWidget(self._scroll)
 
         content = QtWidgets.QWidget(self._scroll)
         content.setObjectName("cnc_panel_content")
+        self._content = content
         self._scroll.setWidget(content)
         layout = QtWidgets.QVBoxLayout(content)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -151,6 +154,13 @@ class CncControlPanel(QtWidgets.QWidget):
         self.log_list.setObjectName("log_list")
         self.log_list.setMaximumHeight(140)
         layout.addWidget(self.log_list)
+        # A local stylesheet wins over FreeCAD's application-wide QSS, so the
+        # scroll viewport and content keep the host colour when the dock is
+        # tabified or floated (Qt reparenting can otherwise reset the palette).
+        self.setStyleSheet(
+            "QWidget#cnc_scroll_viewport, QWidget#cnc_panel_content {"
+            " background-color: palette(window); }"
+        )
         self._on_transport_changed()
 
     def _connect_signals(self) -> None:
@@ -167,6 +177,23 @@ class CncControlPanel(QtWidgets.QWidget):
         for (axis, sign), button in self.jog_buttons.items():
             button.pressed.connect(lambda axis=axis, sign=sign: self.start_jog(axis, sign))
             button.released.connect(self.stop_jog)
+
+    def apply_host_palette(self, palette: QtGui.QPalette) -> None:
+        """Apply the FreeCAD host palette to every widget that paints here.
+
+        Setting it only on the dock and the panel is not enough: Qt does not
+        propagate palettes into stylesheet-styled children or top-level windows
+        after a dock is tabified/floated.
+        """
+        widgets = [
+            self,
+            self._scroll,
+            self._scroll.viewport(),
+            self._content,
+            *self.findChildren(QtWidgets.QWidget),
+        ]
+        for widget in widgets:
+            widget.setPalette(palette)
 
     # --- user actions -----------------------------------------------------
 

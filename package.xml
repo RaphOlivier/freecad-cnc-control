@@ -2,7 +2,7 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>CNC Control</name>
   <description>FreeCAD workbench to drive GRBL 1.1 controllers over serial. Early development: connection, status and jog are implemented; job streaming is in progress.</description>
-  <version>0.0.3</version>
+  <version>0.0.4</version>
   <date>2026-11-28</date>
   <maintainer email="rapholivier@users.noreply.github.com">Raphaël Olivier</maintainer>
   <license file="LICENSE">LGPL-2.1-or-later</license>

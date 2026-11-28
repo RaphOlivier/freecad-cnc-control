@@ -74,7 +74,12 @@ class CncControlWorkbench(_WorkbenchBase):
         self._dock.setMinimumSize(200, 120)
         palette = self._host.main_window().palette()
         self._dock.setPalette(palette)
-        self._panel.setPalette(palette)
+        self._panel.apply_host_palette(palette)
+        self._dock.topLevelChanged.connect(
+            lambda _floating: self._panel.apply_host_palette(
+                self._host.main_window().palette()
+            )
+        )
         self._register_commands()
         if hasattr(self, "appendToolbar"):  # pragma: no cover - FreeCAD only
             self.appendToolbar("CNC", [command_name()])
