@@ -1,5 +1,6 @@
 """Headless tests for the docked panel's user actions and event updates."""
 
+from freecad.cnc_control.core.cam_post import PostResult
 from freecad.cnc_control.freecad_adapter.qt import QtCore, QtGui
 from freecad.cnc_control.gui.panel import CncControlPanel
 
@@ -125,3 +126,109 @@ def test_error_event_is_logged(qapp):
 
     assert panel.log_list.count() == 1
     assert "alarm_active" in panel.log_list.item(0).text()
+
+
+class FakeDialogs:
+    """Deterministic replacement for the Qt job dialogs."""
+
+    def __init__(self, confirm=True, check_mode=False) -> None:
+        self.confirm = confirm
+        self.check_mode = check_mode
+        self.confirmed: list[PostResult] = []
+        self.modes: list[bool | None] = []
+
+    def confirm_job(self, result, parent=None) -> bool:
+        self.confirmed.append(result)
+        return self.confirm
+
+    def choose_check_mode(self, parent=None) -> bool | None:
+        self.modes.append(self.check_mode)
+        return self.check_mode
+
+
+def make_job_panel(qapp, dialogs):
+    bridge = FakeBridge()
+    result = PostResult(
+        lines=["G21", "(OP: Pocket)", "G1X1F100"], operations=["Pocket"]
+    )
+    panel = CncControlPanel(
+        bridge, job_source=lambda: result, dialogs=dialogs
+    )
+    return panel, bridge, result
+
+
+def test_send_job_requests_preflight_only_after_confirmation(qapp):
+    dialogs = FakeDialogs()
+    panel, bridge, result = make_job_panel(qapp, dialogs)
+
+    panel.send_job_button.click()
+    panel.on_event(
+        {"event": "preflight", "accepted": True, "operations": ["Pocket"], "reasons": []}
+    )
+
+    assert dialogs.confirmed == [result]
+    assert dialogs.modes == [False]
+    assert bridge.submitted == [
+        {"cmd": "preflight", "params": {"lines": result.lines}},
+        {
+            "cmd": "stream",
+            "params": {
+                "lines": result.lines,
+                "confirmed": True,
+                "check_mode": False,
+            },
+        },
+    ]
+    assert panel.job_summary.text() == "Pocket"
+
+
+def test_send_job_can_start_in_check_mode(qapp):
+    dialogs = FakeDialogs(check_mode=True)
+    panel, bridge, _result = make_job_panel(qapp, dialogs)
+
+    panel.send_job()
+    panel.on_event({"event": "preflight", "accepted": True, "operations": []})
+
+    assert bridge.submitted[-1]["params"]["check_mode"] is True
+
+
+def test_declining_confirmation_prevents_preflight(qapp):
+    dialogs = FakeDialogs(confirm=False)
+    panel, bridge, _result = make_job_panel(qapp, dialogs)
+
+    panel.send_job()
+
+    assert bridge.submitted == []
+    assert "CAM job cancelled" in panel.log_list.item(0).text()
+
+
+def test_declining_check_mode_prevents_stream(qapp):
+    dialogs = FakeDialogs(check_mode=None)
+    panel, bridge, _result = make_job_panel(qapp, dialogs)
+
+    panel.send_job()
+    panel.on_event({"event": "preflight", "accepted": True, "operations": []})
+
+    assert len(bridge.submitted) == 1
+    assert bridge.submitted[0]["cmd"] == "preflight"
+    assert dialogs.modes == [None]
+
+
+def test_rejected_preflight_prevents_stream(qapp):
+    dialogs = FakeDialogs()
+    panel, bridge, _result = make_job_panel(qapp, dialogs)
+
+    panel.send_job()
+    panel.on_event(
+        {
+            "event": "preflight",
+            "accepted": False,
+            "operations": [],
+            "reasons": ["X travel exceeds limit"],
+        }
+    )
+
+    assert len(bridge.submitted) == 1
+    assert dialogs.modes == []
+    assert any("X travel exceeds limit" in panel.log_list.item(i).text()
+               for i in range(panel.log_list.count()))

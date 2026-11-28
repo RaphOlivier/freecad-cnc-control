@@ -2,6 +2,7 @@
 
 from freecad.cnc_control.freecad_adapter.host import translate
 from freecad.cnc_control.freecad_adapter.qt import QtCore, QtWidgets
+from freecad.cnc_control.gui.dialogs import JobDialogs
 
 _CONTEXT = "CncControl"
 
@@ -14,9 +15,12 @@ def _text(source: str) -> str:
 class CncControlPanel(QtWidgets.QWidget):
     """Qt panel that only talks to the WorkerBridge."""
 
-    def __init__(self, bridge, parent=None) -> None:
+    def __init__(self, bridge, parent=None, job_source=None, dialogs=None) -> None:
         super().__init__(parent)
         self._bridge = bridge
+        self._job_source = job_source
+        self._dialogs = dialogs or JobDialogs()
+        self._job_lines: list[str] | None = None
         self._bridge.event_received.connect(self.on_event)
         self._status_timer = QtCore.QTimer(self)
         self._status_timer.setInterval(500)
@@ -116,6 +120,18 @@ class CncControlPanel(QtWidgets.QWidget):
         jog_form.addRow(grid)
         layout.addWidget(jog)
 
+        job = QtWidgets.QGroupBox(_text("CAM job"), self)
+        job_layout = QtWidgets.QHBoxLayout(job)
+        self.send_job_button = QtWidgets.QPushButton(
+            _text("Send selected CAM Job"), job
+        )
+        self.send_job_button.setObjectName("send_job_button")
+        self.job_summary = QtWidgets.QLabel(_text("No job loaded"), job)
+        self.job_summary.setObjectName("job_summary")
+        job_layout.addWidget(self.send_job_button)
+        job_layout.addWidget(self.job_summary)
+        layout.addWidget(job)
+
         self.log_list = QtWidgets.QListWidget(self)
         self.log_list.setObjectName("log_list")
         self.log_list.setMaximumHeight(140)
@@ -126,6 +142,7 @@ class CncControlPanel(QtWidgets.QWidget):
         self.transport_combo.currentIndexChanged.connect(self._on_transport_changed)
         self.connect_button.clicked.connect(self.connect)
         self.disconnect_button.clicked.connect(self.disconnect)
+        self.send_job_button.clicked.connect(self.send_job)
         self.hold_button.clicked.connect(lambda: self._bridge.realtime("hold"))
         self.resume_button.clicked.connect(lambda: self._bridge.realtime("resume"))
         self.reset_button.clicked.connect(lambda: self._bridge.realtime("reset"))
@@ -165,6 +182,28 @@ class CncControlPanel(QtWidgets.QWidget):
 
     def disconnect(self) -> None:
         self._bridge.submit({"cmd": "disconnect"})
+
+    def send_job(self) -> None:
+        """Post-process the selected CAM job and request a pre-job check."""
+        if self._job_source is None:
+            self._log(_text("No CAM Job source available"))
+            return
+        try:
+            result = self._job_source()
+        except Exception as exc:  # noqa: BLE001 - FreeCAD errors must not crash the panel
+            self._log(f"{_text('job_failed')}: {exc}")
+            return
+        if result is None or not result.lines:
+            self._log(_text("No CAM Job selected"))
+            return
+        self._job_lines = list(result.lines)
+        self.job_summary.setText(", ".join(result.operations) or "-")
+        if not self._dialogs.confirm_job(result, self):
+            self._log(_text("CAM job cancelled"))
+            return
+        self._bridge.submit(
+            {"cmd": "preflight", "params": {"lines": self._job_lines}}
+        )
 
     def _poll_status(self) -> None:
         self._bridge.submit({"cmd": "status"})
@@ -241,6 +280,31 @@ class CncControlPanel(QtWidgets.QWidget):
                     distance=event.get("distance", ""),
                     feed=event.get("feed", ""),
                 )
+            )
+        elif kind == "preflight":
+            self._log(
+                _text("Preflight: accepted {accepted}, operations {operations}").format(
+                    accepted=event.get("accepted", False),
+                    operations=", ".join(event.get("operations", [])),
+                )
+            )
+            for reason in event.get("reasons", []):
+                self._log(f"{_text('reason')}: {reason}")
+            if not event.get("accepted") or self._job_lines is None:
+                return
+            check_mode = self._dialogs.choose_check_mode(self)
+            if check_mode is None:
+                self._log(_text("CAM job cancelled"))
+                return
+            self._bridge.submit(
+                {
+                    "cmd": "stream",
+                    "params": {
+                        "lines": self._job_lines,
+                        "confirmed": True,
+                        "check_mode": check_mode,
+                    },
+                }
             )
         elif kind == "stream_done":
             self._log(

@@ -37,9 +37,13 @@ class FakeGui:
 
     def __init__(self) -> None:
         self.added: list[object] = []
+        self.commands: dict[str, object] = {}
 
     def addWorkbench(self, instance) -> None:
         self.added.append(instance)
+
+    def addCommand(self, name, command) -> None:
+        self.commands[name] = command
 
 
 def test_workbench_creates_one_dock_and_starts_the_bridge(qapp):
@@ -73,3 +77,24 @@ def test_register_workbench_uses_freecadgui(monkeypatch):
 
     assert len(gui.added) == 1
     assert isinstance(gui.added[0], workbench_module.CncControlWorkbench)
+
+
+def test_workbench_registers_send_job_command(qapp, monkeypatch):
+    gui = FakeGui()
+    monkeypatch.setattr(workbench_module, "_FreeCADGui", gui)
+    wb = workbench_module.CncControlWorkbench(
+        host=FakeHost(), bridge_factory=FakeBridge
+    )
+
+    wb.Activated()
+    wb.Activated()
+
+    name = "CNCControl_SendJob"
+    assert list(gui.commands) == [name]
+    command = gui.commands[name]
+    assert command.IsActive() is True
+    assert command.GetResources()["Pixmap"].endswith("CNCControl.svg")
+    called: list[bool] = []
+    wb._panel.send_job = lambda: called.append(True)
+    command.Activated()
+    assert called == [True]
